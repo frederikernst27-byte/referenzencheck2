@@ -1,0 +1,368 @@
+:root {
+  --bg: #0b1020;
+  --bg-2: #11182e;
+  --card: #151d36;
+  --card-2: #1b2440;
+  --border: #273253;
+  --text: #e8edf7;
+  --muted: #9aa6c2;
+  --accent: #6ea8fe;
+  --accent-2: #8b7cff;
+  --green: #34d399;
+  --green-bg: #0e2a22;
+  --amber: #fbbf24;
+  --amber-bg: #2c2410;
+  --red: #f87171;
+  --red-bg: #2c1518;
+  --gray: #94a3b8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: radial-gradient(1200px 700px at 80% -10%, #1b264a 0%, var(--bg) 55%);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.wrap {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+header.hero h1 {
+  font-size: 2rem;
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+
+header.hero .sub {
+  color: var(--muted);
+  margin: 0 0 6px;
+  max-width: 680px;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 6px;
+}
+
+.chip {
+  font-size: 0.72rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--card);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gray);
+}
+
+.chip.on .dot {
+  background: var(--green);
+}
+
+.chip.off {
+  opacity: 0.55;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  background: var(--bg-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  font-size: 0.92rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.55;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(110, 168, 254, 0.18);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 10px 16px;
+  background: var(--card-2);
+  color: var(--text);
+  transition: filter 0.15s ease, transform 0.05s ease;
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border: none;
+  color: #0b1020;
+  font-weight: 650;
+}
+
+button.ghost {
+  background: transparent;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.stat {
+  flex: 1;
+  min-width: 130px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.stat .n {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.stat .l {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.stat.green .n {
+  color: var(--green);
+}
+.stat.amber .n {
+  color: var(--amber);
+}
+.stat.red .n {
+  color: var(--red);
+}
+
+.progress {
+  height: 6px;
+  background: var(--bg-2);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 18px;
+  border: 1px solid var(--border);
+}
+
+.progress > div {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.3s ease;
+}
+
+.results {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ref {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 16px;
+}
+
+.ref .top {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.ref .raw {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.ref .raw .title {
+  font-weight: 600;
+}
+
+.ref .raw .meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-top: 2px;
+}
+
+.verdict {
+  white-space: nowrap;
+  font-size: 0.76rem;
+  font-weight: 650;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.verdict.verified {
+  color: var(--green);
+  background: var(--green-bg);
+  border-color: #1e5c47;
+}
+.verdict.uncertain {
+  color: var(--amber);
+  background: var(--amber-bg);
+  border-color: #6b5418;
+}
+.verdict.not_found {
+  color: var(--red);
+  background: var(--red-bg);
+  border-color: #7a2c30;
+}
+.verdict.pending,
+.verdict.checking,
+.verdict.error {
+  color: var(--gray);
+  background: var(--bg-2);
+  border-color: var(--border);
+}
+
+.detail {
+  margin-top: 12px;
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+  font-size: 0.85rem;
+}
+
+.detail .line {
+  margin: 3px 0;
+  color: var(--muted);
+}
+
+.detail .line b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.links a {
+  font-size: 0.8rem;
+  color: var(--accent);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+.links a:hover {
+  filter: brightness(1.2);
+  text-decoration: underline;
+}
+
+.error {
+  color: var(--red);
+  background: var(--red-bg);
+  border: 1px solid #7a2c30;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 16px;
+  font-size: 0.88rem;
+}
+
+.spin {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--gray);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -1px;
+  margin-right: 6px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+footer {
+  margin-top: 40px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+footer a {
+  color: var(--accent);
+}
+
+a.alllinks-btn {
+  text-decoration: none;
+}
