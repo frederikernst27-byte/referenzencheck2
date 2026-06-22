@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import * as XLSX from "xlsx";
 import type { ParsedReference, VerificationResult } from "@/lib/types";
 
 type RowStatus = "pending" | "checking" | "done" | "error";
@@ -212,6 +213,43 @@ export default function Home() {
     navigator.clipboard?.writeText(allLinks.map((l) => l.url).join("\n"));
   }
 
+  function downloadExcel() {
+    const VERDICT_DE: Record<string, string> = {
+      verified: "Gefunden",
+      uncertain: "Unsicher",
+      not_found: "Nicht gefunden",
+      error: "Fehler",
+    };
+    const data = rows.map((row, i) => ({
+      "#": i + 1,
+      Referenz: row.ref.raw,
+      Titel: row.ref.title || "",
+      Autoren: row.ref.authors?.join("; ") || "",
+      Jahr: row.ref.year || "",
+      DOI: row.ref.doi || "",
+      Ergebnis: VERDICT_DE[row.result?.verdict || row.status] || row.status,
+      "Übereinstimmung (%)": row.result?.confidence != null
+        ? Math.round(row.result.confidence * 100)
+        : "",
+      "Gefundener Titel": row.result?.bestMatch?.matchedTitle || "",
+      "Gefundene Autoren": row.result?.bestMatch?.matchedAuthors?.join("; ") || "",
+      "Gefundenes Jahr": row.result?.bestMatch?.matchedYear || "",
+      Quelle: row.result?.bestMatch?.source || "",
+      Links: row.result?.links.map((l) => l.url).join(" | ") || "",
+      Hinweis: row.result?.notes || "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    // Spaltenbreiten
+    ws["!cols"] = [
+      { wch: 4 }, { wch: 60 }, { wch: 40 }, { wch: 35 }, { wch: 6 }, { wch: 22 },
+      { wch: 16 }, { wch: 18 }, { wch: 40 }, { wch: 35 }, { wch: 14 }, { wch: 18 },
+      { wch: 50 }, { wch: 50 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Referenzencheck");
+    XLSX.writeFile(wb, "referenzencheck.xlsx");
+  }
+
   const showInput = phase === "idle" || phase === "parsing";
 
   return (
@@ -415,6 +453,9 @@ export default function Home() {
                 Alle Links kopieren
               </button>
             )}
+            <button className="ghost" onClick={downloadExcel}>
+              Excel herunterladen
+            </button>
             <button className="ghost" onClick={reset}>
               Neue Prüfung
             </button>
