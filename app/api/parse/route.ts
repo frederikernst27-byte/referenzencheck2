@@ -9,12 +9,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     // Structure-Modus: bereits getrennte (z. B. vom Nutzer korrigierte) Einträge.
+    const apiKey = typeof body?.openrouterKey === "string" ? body.openrouterKey.trim() || undefined : undefined;
+
     if (Array.isArray(body?.references)) {
       const entries = body.references.map((r: unknown) => String(r ?? ""));
       if (!entries.some((e: string) => e.trim())) {
         return NextResponse.json({ error: "Keine Referenzen übergeben." }, { status: 400 });
       }
-      const references = await structureReferences(entries);
+      const references = await structureReferences(entries, apiKey);
       return NextResponse.json({ references });
     }
 
@@ -28,7 +30,7 @@ export async function POST(req: NextRequest) {
         { status: 413 }
       );
     }
-    const references = await parseReferences(text);
+    const references = await parseReferences(text, apiKey);
     return NextResponse.json({ references });
   } catch (e: any) {
     return NextResponse.json(

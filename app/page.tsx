@@ -59,13 +59,22 @@ export default function Home() {
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<SourceStatus | null>(null);
+  const [orKey, setOrKey] = useState("");
 
   useEffect(() => {
     fetch("/api/status")
       .then((r) => r.json())
       .then(setStatus)
       .catch(() => {});
+    try {
+      setOrKey(localStorage.getItem("or_key") || "");
+    } catch {}
   }, []);
+
+  function handleOrKeyChange(val: string) {
+    setOrKey(val);
+    try { localStorage.setItem("or_key", val); } catch {}
+  }
 
   const busy = phase === "parsing" || phase === "verifying";
 
@@ -79,7 +88,7 @@ export default function Home() {
       const res = await fetch("/api/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, ...(orKey ? { openrouterKey: orKey } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Parsing fehlgeschlagen.");
@@ -128,7 +137,7 @@ export default function Home() {
         const res = await fetch("/api/parse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ references: rawList }),
+          body: JSON.stringify({ references: rawList, ...(orKey ? { openrouterKey: orKey } : {}) }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "Strukturierung fehlgeschlagen.");
@@ -158,7 +167,7 @@ export default function Home() {
         const res = await fetch("/api/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reference: ref }),
+          body: JSON.stringify({ reference: ref, ...(orKey ? { openrouterKey: orKey } : {}) }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "Fehler");
@@ -270,6 +279,33 @@ export default function Home() {
             </span>
           </div>
         </section>
+      )}
+
+      {/* Options: eigener OpenRouter-Key */}
+      {showInput && (
+        <details className="options-panel">
+          <summary>⚙ Optionen</summary>
+          <div className="or-key-row">
+            <label htmlFor="or-key">OpenRouter-Key</label>
+            <input
+              id="or-key"
+              className="or-key-input"
+              type="password"
+              placeholder="sk-or-…"
+              value={orKey}
+              onChange={(e) => handleOrKeyChange(e.target.value)}
+              autoComplete="off"
+            />
+            <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer noopener">
+              Key erstellen →
+            </a>
+          </div>
+          <p className="hint" style={{ marginTop: 6 }}>
+            Trage hier deinen eigenen OpenRouter-Key ein, damit du nicht den Key des
+            Betreibers verbrauchst. Der Key wird nur in diesem Browser gespeichert und
+            ausschließlich für deine Anfragen verwendet – nie dauerhaft auf dem Server.
+          </p>
+        </details>
       )}
 
       {error && <div className="error">{error}</div>}
@@ -399,6 +435,13 @@ export default function Home() {
         Referenzencheck · Verifizierung über SERP API → ScraperAPI → SearchApi → Scrapingdog →
         Crossref → OpenAlex → Semantic Scholar. Ergebnisse sind Hinweise, keine Garantie –
         bitte kritische Quellen manuell gegenprüfen.
+        <br />
+        Kontakt:{" "}
+        <a href="mailto:frederik.ernst@stud.uni-due.de">frederik.ernst@stud.uni-due.de</a>
+        {" · "}
+        <a href="https://github.com/frederikernst27-byte/referenzencheck2" target="_blank" rel="noreferrer noopener">
+          GitHub
+        </a>
       </footer>
     </div>
   );

@@ -22,9 +22,10 @@ function scoreCandidate(ref: ParsedReference, cand: SourceCandidate): SourceMatc
 
 async function llmAssess(
   ref: ParsedReference,
-  match: SourceMatch
+  match: SourceMatch,
+  apiKey?: string
 ): Promise<LlmAssessment | undefined> {
-  if (!hasOpenRouter()) return undefined;
+  if (!hasOpenRouter(apiKey)) return undefined;
   try {
     const sys =
       "Du prüfst, ob ein gefundener Datenbank-Treffer wirklich dieselbe Arbeit ist wie eine zitierte Referenz. " +
@@ -51,7 +52,7 @@ async function llmAssess(
         { role: "system", content: sys },
         { role: "user", content: user },
       ],
-      { json: true, temperature: 0, timeoutMs: 30000 }
+      { json: true, temperature: 0, timeoutMs: 30000, apiKey }
     );
     const data = safeJsonParse<LlmAssessment>(content);
     return {
@@ -64,7 +65,7 @@ async function llmAssess(
   }
 }
 
-export async function verifyReference(ref: ParsedReference): Promise<VerificationResult> {
+export async function verifyReference(ref: ParsedReference, apiKey?: string): Promise<VerificationResult> {
   const chain = sourceChain();
   const checkedSources: string[] = [];
   const allMatches: SourceMatch[] = [];
@@ -98,7 +99,7 @@ export async function verifyReference(ref: ParsedReference): Promise<Verificatio
   // Optionale LLM-Bewertung des besten Kandidaten (nur wenn ein Treffer existiert).
   let llmAssessment: LlmAssessment | undefined;
   if (bestMatch) {
-    llmAssessment = await llmAssess(ref, bestMatch);
+    llmAssessment = await llmAssess(ref, bestMatch, apiKey);
   }
 
   // Verdict bestimmen.

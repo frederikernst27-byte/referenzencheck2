@@ -158,13 +158,13 @@ function buildUserPrompt(text: string): string {
   );
 }
 
-async function llmParse(text: string): Promise<ParsedReference[]> {
+async function llmParse(text: string, apiKey?: string): Promise<ParsedReference[]> {
   const content = await openRouterChat(
     [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: buildUserPrompt(text) },
     ],
-    { json: true, temperature: 0, maxTokens: 8000, model: parseModel() }
+    { json: true, temperature: 0, maxTokens: 8000, model: parseModel(), apiKey }
   );
   const data = safeJsonParse<{ references?: LlmRef[] }>(content);
   const refs = Array.isArray(data?.references) ? data.references : [];
@@ -177,10 +177,10 @@ async function llmParse(text: string): Promise<ParsedReference[]> {
   return mapped;
 }
 
-export async function parseReferences(text: string): Promise<ParsedReference[]> {
-  if (hasOpenRouter()) {
+export async function parseReferences(text: string, apiKey?: string): Promise<ParsedReference[]> {
+  if (hasOpenRouter(apiKey)) {
     try {
-      return await llmParse(text);
+      return await llmParse(text, apiKey);
     } catch {
       // Fällt auf die Heuristik zurück, wenn das LLM nicht erreichbar/fehlerhaft ist.
     }
@@ -209,20 +209,20 @@ function buildStructurePrompt(entries: string[]): string {
  * Strukturiert eine vom Nutzer bestätigte/korrigierte Liste von Referenz-Strings.
  * Splittet/merged NICHT – jeder Eingabeeintrag ergibt genau eine Referenz.
  */
-export async function structureReferences(entries: string[]): Promise<ParsedReference[]> {
+export async function structureReferences(entries: string[], apiKey?: string): Promise<ParsedReference[]> {
   const cleaned = entries
     .map((e) => (e || "").replace(/\s+/g, " ").trim())
     .filter((e) => e.length >= 3);
   if (!cleaned.length) return [];
 
-  if (hasOpenRouter()) {
+  if (hasOpenRouter(apiKey)) {
     try {
       const content = await openRouterChat(
         [
           { role: "system", content: STRUCTURE_SYSTEM },
           { role: "user", content: buildStructurePrompt(cleaned) },
         ],
-        { json: true, temperature: 0, maxTokens: 8000, model: parseModel() }
+        { json: true, temperature: 0, maxTokens: 8000, model: parseModel(), apiKey }
       );
       const data = safeJsonParse<{ references?: LlmRef[] }>(content);
       const refs = Array.isArray(data?.references) ? data.references : [];

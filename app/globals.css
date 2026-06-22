@@ -430,3 +430,59 @@ footer a {
 a.alllinks-btn {
   text-decoration: none;
 }
+
+.options-panel {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  background: var(--card);
+}
+
+.options-panel summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.85rem;
+  user-select: none;
+}
+
+.options-panel[open] summary {
+  margin-bottom: 12px;
+}
+
+.or-key-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.or-key-row label {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.or-key-input {
+  flex: 1;
+  min-width: 200px;
+  background: var(--bg-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.88rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.or-key-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(110, 168, 254, 0.18);
+}
+
+.or-key-row a {
+  color: var(--accent);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}

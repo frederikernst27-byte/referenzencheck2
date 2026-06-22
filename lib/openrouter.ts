@@ -1,7 +1,7 @@
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-export function hasOpenRouter(): boolean {
-  return !!process.env.OPENROUTER_API_KEY;
+export function hasOpenRouter(apiKey?: string): boolean {
+  return !!(apiKey || process.env.OPENROUTER_API_KEY);
 }
 
 export interface ChatMessage {
@@ -17,9 +17,10 @@ export async function openRouterChat(
     timeoutMs?: number;
     maxTokens?: number;
     model?: string;
+    apiKey?: string;
   } = {}
 ): Promise<string> {
-  const key = process.env.OPENROUTER_API_KEY;
+  const key = opts.apiKey || process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error("OPENROUTER_API_KEY ist nicht gesetzt");
 
   const model = opts.model || process.env.OPENROUTER_MODEL || "deepseek/deepseek-chat";

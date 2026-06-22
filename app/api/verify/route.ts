@@ -12,7 +12,8 @@ export async function POST(req: NextRequest) {
     if (!reference || typeof reference.raw !== "string" || !reference.raw.trim()) {
       return NextResponse.json({ error: "Keine gültige Referenz übergeben." }, { status: 400 });
     }
-    const result = await verifyReference(reference);
+    const apiKey = typeof body?.openrouterKey === "string" ? body.openrouterKey.trim() || undefined : undefined;
+    const result = await verifyReference(reference, apiKey);
     return NextResponse.json({ result });
   } catch (e: any) {
     return NextResponse.json(
