@@ -12,6 +12,13 @@ interface Row {
   error?: string;
 }
 
+interface EditItem {
+  id: string;
+  raw: string;
+  title?: string;
+  year?: number;
+}
+
 interface SourceStatus {
   sources: { name: string; active: boolean }[];
   llm: boolean;
@@ -44,8 +51,12 @@ const VERDICT_LABEL: Record<string, string> = {
 
 export default function Home() {
   const [text, setText] = useState("");
+  const [phase, setPhase] = useState<"idle" | "parsing" | "review" | "verifying" | "done">("idle");
+  const [parsedRefs, setParsedRefs] = useState<ParsedReference[]>([]);
+  const [editItems, setEditItems] = useState<EditItem[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
-  const [phase, setPhase] = useState<"idle" | "parsing" | "verifying" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<SourceStatus | null>(null);
 
@@ -58,11 +69,12 @@ export default function Home() {
 
   const busy = phase === "parsing" || phase === "verifying";
 
-  async function run() {
+  // Schritt 1: Text -> KI-Parsing -> editierbare Vorschau
+  async function parse() {
     setError(null);
     setRows([]);
+    setDirty(false);
     setPhase("parsing");
-    let references: ParsedReference[] = [];
     try {
       const res = await fetch("/api/parse", {
         method: "POST",
@@ -71,24 +83,76 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Parsing fehlgeschlagen.");
-      references = data.references || [];
+      const refs: ParsedReference[] = data.references || [];
+      if (!refs.length) {
+        setError("Es konnten keine Referenzen erkannt werden. Bitte Text prüfen.");
+        setPhase("idle");
+        return;
+      }
+      setParsedRefs(refs);
+      setEditItems(refs.map((r) => ({ id: r.id, raw: r.raw, title: r.title, year: r.year })));
+      setPhase("review");
     } catch (e: any) {
       setError(e?.message || "Parsing fehlgeschlagen.");
       setPhase("idle");
+    }
+  }
+
+  function updateItem(id: string, raw: string) {
+    setDirty(true);
+    setEditItems((prev) => prev.map((it) => (it.id === id ? { ...it, raw } : it)));
+  }
+  function deleteItem(id: string) {
+    setDirty(true);
+    setEditItems((prev) => prev.filter((it) => it.id !== id));
+  }
+  function addItem() {
+    setDirty(true);
+    setEditItems((prev) => [...prev, { id: `new-${Date.now()}`, raw: "" }]);
+  }
+
+  // Schritt 2: (korrigierte) Referenzen -> Verifizierung
+  async function startSearch() {
+    setError(null);
+    const rawList = editItems.map((it) => it.raw.trim()).filter(Boolean);
+    if (!rawList.length) {
+      setError("Keine Referenzen zum Prüfen.");
       return;
     }
 
-    if (!references.length) {
-      setError("Es konnten keine Referenzen erkannt werden. Bitte Text prüfen.");
-      setPhase("idle");
+    let refs: ParsedReference[];
+    if (dirty) {
+      // Nutzer hat etwas geändert -> Felder für die korrigierte Liste neu strukturieren.
+      setStarting(true);
+      try {
+        const res = await fetch("/api/parse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ references: rawList }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || "Strukturierung fehlgeschlagen.");
+        refs = data.references || [];
+      } catch (e: any) {
+        setError(e?.message || "Strukturierung fehlgeschlagen.");
+        setStarting(false);
+        return;
+      }
+      setStarting(false);
+    } else {
+      refs = parsedRefs;
+    }
+
+    if (!refs.length) {
+      setError("Keine Referenzen zum Prüfen.");
       return;
     }
 
-    const initial: Row[] = references.map((ref) => ({ ref, status: "pending" }));
+    const initial: Row[] = refs.map((ref) => ({ ref, status: "pending" }));
     setRows(initial);
     setPhase("verifying");
 
-    await pool(references, 4, async (ref) => {
+    await pool(refs, 4, async (ref) => {
       setRows((prev) => prev.map((r) => (r.ref.id === ref.id ? { ...r, status: "checking" } : r)));
       try {
         const res = await fetch("/api/verify", {
@@ -99,9 +163,7 @@ export default function Home() {
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "Fehler");
         setRows((prev) =>
-          prev.map((r) =>
-            r.ref.id === ref.id ? { ...r, status: "done", result: data.result } : r
-          )
+          prev.map((r) => (r.ref.id === ref.id ? { ...r, status: "done", result: data.result } : r))
         );
       } catch (e: any) {
         setRows((prev) =>
@@ -115,6 +177,16 @@ export default function Home() {
     setPhase("done");
   }
 
+  function reset() {
+    setText("");
+    setParsedRefs([]);
+    setEditItems([]);
+    setRows([]);
+    setDirty(false);
+    setError(null);
+    setPhase("idle");
+  }
+
   const done = rows.filter((r) => r.status === "done" || r.status === "error").length;
   const total = rows.length;
   const counts = {
@@ -124,15 +196,14 @@ export default function Home() {
   };
 
   const allLinks = Array.from(
-    new Map(
-      rows.flatMap((r) => r.result?.links || []).map((l) => [l.url, l])
-    ).values()
+    new Map(rows.flatMap((r) => r.result?.links || []).map((l) => [l.url, l])).values()
   );
 
   function copyLinks() {
-    const txt = allLinks.map((l) => l.url).join("\n");
-    navigator.clipboard?.writeText(txt);
+    navigator.clipboard?.writeText(allLinks.map((l) => l.url).join("\n"));
   }
+
+  const showInput = phase === "idle" || phase === "parsing";
 
   return (
     <div className="wrap">
@@ -148,54 +219,121 @@ export default function Home() {
         {status && (
           <div className="badge-row">
             {status.sources.map((s) => (
-              <span key={s.name} className={`chip ${s.active ? "on" : "off"}`} title={s.active ? "aktiv" : "kein Key gesetzt"}>
+              <span
+                key={s.name}
+                className={`chip ${s.active ? "on" : "off"}`}
+                title={s.active ? "aktiv" : "kein Key gesetzt"}
+              >
                 <span className="dot" />
                 {s.name}
               </span>
             ))}
             <span className={`chip ${status.llm ? "on" : "off"}`}>
               <span className="dot" />
-              KI-Bewertung: {status.llm ? status.model : "aus"}
+              KI: {status.llm ? status.model : "aus"}
             </span>
           </div>
         )}
       </header>
 
-      <section className="card">
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={"Literaturverzeichnis hier einfügen …\n\nz. B.:\nAutor, A. (2020). Titel der Arbeit. Journal, 12(3), 1-20."}
-          disabled={busy}
-        />
-        <div className="toolbar">
-          <button className="primary" onClick={run} disabled={busy || !text.trim()}>
-            {busy ? <><span className="spin" />Prüfe …</> : "Referenzen prüfen"}
-          </button>
-          <button className="ghost" onClick={() => setText(EXAMPLE)} disabled={busy}>
-            Beispiel einfügen
-          </button>
-          <button
-            className="ghost"
-            onClick={() => {
-              setText("");
-              setRows([]);
-              setPhase("idle");
-              setError(null);
-            }}
+      {/* Schritt 1: Eingabe */}
+      {showInput && (
+        <section className="card">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={
+              "Literaturverzeichnis hier einfügen …\n\nz. B.:\nAutor, A. (2020). Titel der Arbeit. Journal, 12(3), 1-20."
+            }
             disabled={busy}
-          >
-            Leeren
-          </button>
-          <span className="spacer" />
-          <span className="hint">
-            {text.trim() ? `${text.length} Zeichen` : "Text einfügen, um zu starten"}
-          </span>
-        </div>
-      </section>
+          />
+          <div className="toolbar">
+            <button className="primary" onClick={parse} disabled={busy || !text.trim()}>
+              {phase === "parsing" ? (
+                <>
+                  <span className="spin" />
+                  Erkenne Referenzen …
+                </>
+              ) : (
+                "Referenzen erkennen"
+              )}
+            </button>
+            <button className="ghost" onClick={() => setText(EXAMPLE)} disabled={busy}>
+              Beispiel einfügen
+            </button>
+            <button className="ghost" onClick={reset} disabled={busy}>
+              Leeren
+            </button>
+            <span className="spacer" />
+            <span className="hint">
+              {text.trim() ? `${text.length} Zeichen` : "Text einfügen, um zu starten"}
+            </span>
+          </div>
+        </section>
+      )}
 
       {error && <div className="error">{error}</div>}
 
+      {/* Schritt 2: Editierbare Vorschau */}
+      {phase === "review" && (
+        <section className="card">
+          <div className="review-head">
+            <b>{editItems.length} Referenzen erkannt</b>
+            <span className="hint">Bitte prüfen/korrigieren – eine Referenz pro Feld.</span>
+          </div>
+
+          <div className="editlist">
+            {editItems.map((it, idx) => (
+              <div className="edititem" key={it.id}>
+                <span className="idx">{idx + 1}</span>
+                <div className="edit-main">
+                  <textarea
+                    value={it.raw}
+                    onChange={(e) => updateItem(it.id, e.target.value)}
+                    rows={2}
+                    placeholder="Referenztext …"
+                  />
+                  {it.title && (
+                    <div className="edit-hint">
+                      Titel erkannt: {it.title}
+                      {it.year ? ` · ${it.year}` : ""}
+                    </div>
+                  )}
+                </div>
+                <button
+                  className="del"
+                  onClick={() => deleteItem(it.id)}
+                  title="Eintrag entfernen"
+                  aria-label="Eintrag entfernen"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="toolbar">
+            <button className="primary" onClick={startSearch} disabled={starting || !editItems.length}>
+              {starting ? (
+                <>
+                  <span className="spin" />
+                  Bereite Suche vor …
+                </>
+              ) : (
+                `Suche starten (${editItems.filter((i) => i.raw.trim()).length})`
+              )}
+            </button>
+            <button className="ghost" onClick={addItem} disabled={starting}>
+              + Eintrag hinzufügen
+            </button>
+            <button className="ghost" onClick={() => setPhase("idle")} disabled={starting}>
+              ← Text bearbeiten
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Schritt 3: Ergebnisse */}
       {total > 0 && (
         <>
           <div className="summary">
@@ -222,33 +360,38 @@ export default function Home() {
               <div style={{ width: `${total ? (done / total) * 100 : 0}%` }} />
             </div>
           )}
+
+          <div className="results">
+            {rows.map((row) => (
+              <RefCard key={row.ref.id} row={row} />
+            ))}
+          </div>
         </>
       )}
 
-      {total > 0 && (
-        <div className="results">
-          {rows.map((row) => (
-            <RefCard key={row.ref.id} row={row} />
-          ))}
-        </div>
-      )}
-
-      {phase === "done" && allLinks.length > 0 && (
+      {phase === "done" && (
         <section className="card">
           <div className="toolbar" style={{ marginTop: 0 }}>
-            <b>Alle gefundenen Links ({allLinks.length})</b>
+            {allLinks.length > 0 && <b>Alle gefundenen Links ({allLinks.length})</b>}
             <span className="spacer" />
-            <button className="ghost" onClick={copyLinks}>
-              Alle Links kopieren
+            {allLinks.length > 0 && (
+              <button className="ghost" onClick={copyLinks}>
+                Alle Links kopieren
+              </button>
+            )}
+            <button className="ghost" onClick={reset}>
+              Neue Prüfung
             </button>
           </div>
-          <div className="links" style={{ marginTop: 12 }}>
-            {allLinks.map((l) => (
-              <a key={l.url} href={l.url} target="_blank" rel="noreferrer noopener">
-                {l.label}
-              </a>
-            ))}
-          </div>
+          {allLinks.length > 0 && (
+            <div className="links" style={{ marginTop: 12 }}>
+              {allLinks.map((l) => (
+                <a key={l.url} href={l.url} target="_blank" rel="noreferrer noopener">
+                  {l.label}
+                </a>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -277,7 +420,9 @@ function RefCard({ row }: { row: Row }) {
               <div className="meta">{ref.raw}</div>
             </>
           ) : (
-            <div className="title" style={{ fontWeight: 400 }}>{ref.raw}</div>
+            <div className="title" style={{ fontWeight: 400 }}>
+              {ref.raw}
+            </div>
           )}
           {(ref.authors?.length || ref.year || ref.doi) && (
             <div className="meta">
@@ -321,8 +466,7 @@ function RefCard({ row }: { row: Row }) {
 
           {result.llmAssessment && (
             <div className="line">
-              <b>KI-Bewertung:</b>{" "}
-              {result.llmAssessment.isMatch ? "passt" : "passt nicht"} (
+              <b>KI-Bewertung:</b> {result.llmAssessment.isMatch ? "passt" : "passt nicht"} (
               {Math.round(result.llmAssessment.confidence * 100)}%) – {result.llmAssessment.reasoning}
             </div>
           )}

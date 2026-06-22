@@ -54,6 +54,7 @@ Alle Keys sind **optional** – fehlt ein Key, wird die jeweilige Quelle
 | `CROSSREF_MAILTO` / `OPENALEX_MAILTO` | "Polite Pool" der freien APIs |
 | `OPENROUTER_API_KEY` | KI-Parsing & Treffer-Bewertung (DeepSeek) |
 | `OPENROUTER_MODEL` | Modell-ID, Standard `deepseek/deepseek-chat` |
+| `OPENROUTER_PARSE_MODEL` | Optional eigenes Modell fürs Zerlegen der Referenzen (Fallback: `OPENROUTER_MODEL`) |
 
 ## Deployment (Vercel)
 

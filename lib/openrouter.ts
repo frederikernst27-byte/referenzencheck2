@@ -11,13 +11,19 @@ export interface ChatMessage {
 
 export async function openRouterChat(
   messages: ChatMessage[],
-  opts: { json?: boolean; temperature?: number; timeoutMs?: number } = {}
+  opts: {
+    json?: boolean;
+    temperature?: number;
+    timeoutMs?: number;
+    maxTokens?: number;
+    model?: string;
+  } = {}
 ): Promise<string> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error("OPENROUTER_API_KEY ist nicht gesetzt");
 
-  const model = process.env.OPENROUTER_MODEL || "deepseek/deepseek-chat";
-  const { json = false, temperature = 0, timeoutMs = 45000 } = opts;
+  const model = opts.model || process.env.OPENROUTER_MODEL || "deepseek/deepseek-chat";
+  const { json = false, temperature = 0, timeoutMs = 45000, maxTokens } = opts;
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -35,6 +41,7 @@ export async function openRouterChat(
         model,
         messages,
         temperature,
+        ...(maxTokens ? { max_tokens: maxTokens } : {}),
         ...(json ? { response_format: { type: "json_object" } } : {}),
       }),
     });
@@ -49,7 +56,53 @@ export async function openRouterChat(
   }
 }
 
-/** Robustes JSON-Parsing: entfernt Markdown-Fences und sucht das erste JSON-Objekt. */
+/**
+ * Bergt aus (ggf. abgeschnittenem) Text alle vollständigen Objekte des
+ * `references`-Arrays. So gehen bei einer durch das Token-Limit abgeschnittenen
+ * Antwort nicht alle Referenzen verloren – die vollständig übertragenen bleiben.
+ */
+function salvageReferences(s: string): { references: any[] } | null {
+  const keyIdx = s.indexOf('"references"');
+  if (keyIdx === -1) return null;
+  const arrStart = s.indexOf("[", keyIdx);
+  if (arrStart === -1) return null;
+
+  const objs: any[] = [];
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let objStart = -1;
+
+  for (let i = arrStart + 1; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        try {
+          objs.push(JSON.parse(s.slice(objStart, i + 1)));
+        } catch {
+          /* unvollständiges Objekt überspringen */
+        }
+        objStart = -1;
+      }
+    } else if (ch === "]" && depth === 0) {
+      break;
+    }
+  }
+  return objs.length ? { references: objs } : null;
+}
+
+/** Robustes JSON-Parsing: entfernt Markdown-Fences, birgt abgeschnittene Antworten. */
 export function safeJsonParse<T = any>(content: string): T {
   let s = (content || "").trim();
   // ```json ... ``` Fences entfernen
@@ -57,11 +110,18 @@ export function safeJsonParse<T = any>(content: string): T {
   try {
     return JSON.parse(s) as T;
   } catch {
-    const start = s.indexOf("{");
-    const end = s.lastIndexOf("}");
-    if (start !== -1 && end !== -1 && end > start) {
-      return JSON.parse(s.slice(start, end + 1)) as T;
-    }
-    throw new Error("Konnte JSON-Antwort nicht parsen");
+    /* weiter mit Heuristiken */
   }
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    try {
+      return JSON.parse(s.slice(start, end + 1)) as T;
+    } catch {
+      /* weiter mit Salvage */
+    }
+  }
+  const salvaged = salvageReferences(s);
+  if (salvaged) return salvaged as T;
+  throw new Error("Konnte JSON-Antwort nicht parsen");
 }

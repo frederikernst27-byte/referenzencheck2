@@ -167,6 +167,70 @@ button.ghost {
   font-size: 0.82rem;
 }
 
+.review-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.editlist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.edititem {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.edititem .idx {
+  flex: 0 0 auto;
+  width: 26px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 0.82rem;
+  padding-top: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.edititem .edit-main {
+  flex: 1;
+}
+
+.edititem textarea {
+  min-height: 0;
+  width: 100%;
+  resize: vertical;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 0.88rem;
+  padding: 9px 11px;
+  line-height: 1.45;
+}
+
+.edit-hint {
+  color: var(--muted);
+  font-size: 0.76rem;
+  margin-top: 4px;
+  padding-left: 2px;
+}
+
+.edititem .del {
+  flex: 0 0 auto;
+  padding: 8px 11px;
+  color: var(--muted);
+  background: transparent;
+  border-color: var(--border);
+}
+
+.edititem .del:hover {
+  color: var(--red);
+  border-color: #7a2c30;
+}
+
 .summary {
   display: flex;
   flex-wrap: wrap;

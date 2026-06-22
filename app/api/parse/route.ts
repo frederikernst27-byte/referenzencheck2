@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseReferences } from "@/lib/parse";
+import { parseReferences, structureReferences } from "@/lib/parse";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -7,6 +7,17 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
+    // Structure-Modus: bereits getrennte (z. B. vom Nutzer korrigierte) Einträge.
+    if (Array.isArray(body?.references)) {
+      const entries = body.references.map((r: unknown) => String(r ?? ""));
+      if (!entries.some((e: string) => e.trim())) {
+        return NextResponse.json({ error: "Keine Referenzen übergeben." }, { status: 400 });
+      }
+      const references = await structureReferences(entries);
+      return NextResponse.json({ references });
+    }
+
     const text: unknown = body?.text;
     if (typeof text !== "string" || !text.trim()) {
       return NextResponse.json({ error: "Kein Text übergeben." }, { status: 400 });

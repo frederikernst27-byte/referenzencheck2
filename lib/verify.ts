@@ -28,7 +28,11 @@ async function llmAssess(
   try {
     const sys =
       "Du prüfst, ob ein gefundener Datenbank-Treffer wirklich dieselbe Arbeit ist wie eine zitierte Referenz. " +
-      "Achte auf Titel, Autoren und Jahr. Antworte ausschließlich mit JSON.";
+      "Achte vor allem auf Titel und Autoren. " +
+      "WICHTIG: Eine andere Auflage, ein Reprint oder ein abweichendes Jahr DESSELBEN Werks gilt weiterhin als Übereinstimmung (isMatch=true) – " +
+      "erwähne die Jahr-/Auflagen-Abweichung dann nur in 'reasoning'. " +
+      "Setze isMatch=false NUR, wenn es sich erkennbar um ein ANDERES Werk handelt (anderer Titel oder andere Autoren). " +
+      "Antworte ausschließlich mit JSON.";
     const user =
       "Zitierte Referenz:\n" +
       JSON.stringify({ raw: ref.raw, title: ref.title, authors: ref.authors, year: ref.year, doi: ref.doi }) +
@@ -128,6 +132,17 @@ export async function verifyReference(ref: ParsedReference): Promise<Verificatio
       if (!strongHit)
         notes = "Nur teilweise Übereinstimmung – Treffer unsicher, bitte manuell prüfen.";
     }
+  }
+
+  // Bei einem Treffer mit abweichendem Jahr/Auflage transparent darauf hinweisen.
+  if (
+    verdict === "verified" &&
+    ref.year &&
+    bestMatch?.matchedYear &&
+    ref.year !== bestMatch.matchedYear
+  ) {
+    const hint = `Hinweis: andere Auflage/Jahr gefunden (zitiert ${ref.year}, gefunden ${bestMatch.matchedYear}).`;
+    notes = notes ? `${notes} ${hint}` : hint;
   }
 
   const links = uniqueLinks(allMatches.flatMap((m) => m.links));
