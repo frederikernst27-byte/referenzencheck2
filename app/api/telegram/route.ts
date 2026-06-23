@@ -25,10 +25,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true }); // nichts zu verarbeiten
   }
 
+  // Eigene Basis-URL bestimmen (für das Fan-out an die Worker-Route).
+  const host = req.headers.get("x-forwarded-host") || new URL(req.url).host;
+  const proto = req.headers.get("x-forwarded-proto") || "https";
+  const origin = `${proto}://${host}`;
+
   // Telegram darf nicht auf die (langsame) Verifizierung warten -> Hintergrund.
   after(async () => {
     try {
-      await processUpdate(update as any);
+      await processUpdate(update as any, origin);
     } catch {
       /* Fehler werden in processUpdate behandelt */
     }

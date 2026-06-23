@@ -160,7 +160,46 @@ async function handleCommand(chatId: number, text: string): Promise<boolean> {
   return false; // kein Befehl
 }
 
-async function handleBibliography(chatId: number, text: string): Promise<void> {
+async function safeSend(chatId: number, msg: string): Promise<void> {
+  try {
+    await sendMessage(chatId, msg);
+  } catch {
+    /* einzelner Sendefehler darf den Ablauf nicht abbrechen */
+  }
+}
+
+/** Basis-URL für interne Self-Calls (Fan-out an die Worker-Route). */
+function selfBaseUrl(origin?: string): string | undefined {
+  if (origin) return origin.replace(/\/+$/, "");
+  const v = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+  return v ? `https://${v}` : undefined;
+}
+
+/**
+ * Prüft EINE Referenz und sendet das Ergebnis sofort an den Chat.
+ * Wird sowohl inline (Fallback) als auch von der Worker-Route aufgerufen –
+ * dort läuft jede Referenz in einer eigenen Funktion mit eigenem Zeitbudget.
+ */
+export async function verifyOneAndSend(
+  chatId: number,
+  index: number,
+  ref: ParsedReference,
+  userKey?: string
+): Promise<string> {
+  try {
+    const r = await withTimeout(verifyReference(ref, userKey), 50000);
+    await safeSend(chatId, formatResult(index, r));
+    return r.verdict;
+  } catch {
+    await safeSend(
+      chatId,
+      `${VERDICT.error.icon} <b>${index}. Konnte nicht geprüft werden</b>\n${escapeHtml(ref.raw.slice(0, 200))}`
+    );
+    return "error";
+  }
+}
+
+async function handleBibliography(chatId: number, text: string, origin?: string): Promise<void> {
   const userKey = await getUserKey(chatId);
   const usingServerKey = !userKey;
 
@@ -191,50 +230,47 @@ async function handleBibliography(chatId: number, text: string): Promise<void> {
     `📑 <b>${refs.length} Referenzen erkannt</b>${capped ? ` (auf ${MAX_REFS} begrenzt)` : ""} – prüfe …`
   );
 
-  // Wichtig: Ergebnisse SOFORT senden, sobald eine Referenz fertig ist. So gehen
-  // bei einem Vercel-Timeout (60 s) nicht alle Treffer verloren. Pro Referenz ein
-  // hartes Zeitbudget, damit eine hängende Quelle den Lauf nicht blockiert.
   const counts = { verified: 0, uncertain: 0, not_found: 0, error: 0 };
-  let finished = 0;
-
-  const safeSend = async (msg: string) => {
-    try {
-      await sendMessage(chatId, msg);
-    } catch {
-      /* einzelner Sendefehler darf den Worker nicht abbrechen */
-    }
+  const tally = (verdict: string) => {
+    (counts as any)[verdict] = ((counts as any)[verdict] || 0) + 1;
   };
 
-  await pool(refs, 4, async (ref, idx) => {
-    try {
-      const r = await withTimeout(verifyReference(ref, userKey), 40000);
-      (counts as any)[r.verdict] = ((counts as any)[r.verdict] || 0) + 1;
-      await safeSend(formatResult(idx + 1, r));
-    } catch {
-      counts.error++;
-      await safeSend(
-        `${VERDICT.error.icon} <b>${idx + 1}. Konnte nicht geprüft werden</b>\n${escapeHtml(
-          ref.raw.slice(0, 200)
-        )}`
-      );
-    } finally {
-      finished++;
-    }
-  });
+  const base = selfBaseUrl(origin);
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET || "";
+
+  if (base) {
+    // Fan-out: jede Referenz in einer EIGENEN Serverless-Funktion prüfen. Dadurch
+    // hat jede Referenz ihr eigenes 60-s-Budget und sendet ihr Ergebnis selbst –
+    // ein Timeout dieser Funktion kann die Einzel-Ergebnisse nicht mehr verhindern.
+    const settled = await Promise.allSettled(
+      refs.map((ref, idx) =>
+        fetch(`${base}/api/telegram/worker`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chatId, index: idx + 1, ref, userKey, secret }),
+        }).then((r) => r.json() as Promise<{ verdict?: string }>)
+      )
+    );
+    settled.forEach((s) => tally(s.status === "fulfilled" && s.value?.verdict ? s.value.verdict : "error"));
+  } else {
+    // Fallback (z. B. lokal ohne Self-URL): inline mit Concurrency-Pool.
+    await pool(refs, 4, async (ref, idx) => {
+      tally(await verifyOneAndSend(chatId, idx + 1, ref, userKey));
+    });
+  }
 
   let summary =
     "<b>Zusammenfassung</b>\n" +
-    `Geprüft: ${finished}/${refs.length}\n` +
     `✅ Gefunden: ${counts.verified}\n` +
     `⚠️ Unsicher: ${counts.uncertain}\n` +
     `❌ Nicht gefunden: ${counts.not_found}` +
     (counts.error ? `\n⛔ Fehler/Timeout: ${counts.error}` : "");
   if (usingServerKey) summary += reminderFooter();
-  await safeSend(summary);
+  await safeSend(chatId, summary);
 }
 
 /** Verarbeitet ein einzelnes Telegram-Update (Hintergrundarbeit). */
-export async function processUpdate(update: TgUpdate): Promise<void> {
+export async function processUpdate(update: TgUpdate, origin?: string): Promise<void> {
   const msg = update.message || update.edited_message;
   const chatId = msg?.chat?.id;
   const text = msg?.text;
@@ -242,7 +278,7 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
 
   try {
     const wasCommand = await handleCommand(chatId, text);
-    if (!wasCommand) await handleBibliography(chatId, text);
+    if (!wasCommand) await handleBibliography(chatId, text, origin);
   } catch (e: any) {
     try {
       await sendMessage(chatId, `⛔ Es ist ein Fehler aufgetreten: ${escapeHtml(e?.message || "unbekannt")}`);
