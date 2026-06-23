@@ -38,6 +38,23 @@ async function pool<T>(items: T[], limit: number, worker: (item: T, i: number) =
   await Promise.all(runners);
 }
 
+/** Bricht das Warten nach ms ab (die Hintergrundarbeit läuft ggf. weiter). */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("Zeitüberschreitung")), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
 function reminderFooter(): string {
   return (
     "\n\n💡 <b>Tipp:</b> Mit /setkey kannst du deinen eigenen OpenRouter-Key nutzen – " +
@@ -174,40 +191,46 @@ async function handleBibliography(chatId: number, text: string): Promise<void> {
     `📑 <b>${refs.length} Referenzen erkannt</b>${capped ? ` (auf ${MAX_REFS} begrenzt)` : ""} – prüfe …`
   );
 
-  const results = new Array<VerificationResult | null>(refs.length).fill(null);
+  // Wichtig: Ergebnisse SOFORT senden, sobald eine Referenz fertig ist. So gehen
+  // bei einem Vercel-Timeout (60 s) nicht alle Treffer verloren. Pro Referenz ein
+  // hartes Zeitbudget, damit eine hängende Quelle den Lauf nicht blockiert.
+  const counts = { verified: 0, uncertain: 0, not_found: 0, error: 0 };
+  let finished = 0;
+
+  const safeSend = async (msg: string) => {
+    try {
+      await sendMessage(chatId, msg);
+    } catch {
+      /* einzelner Sendefehler darf den Worker nicht abbrechen */
+    }
+  };
+
   await pool(refs, 4, async (ref, idx) => {
     try {
-      results[idx] = await verifyReference(ref, userKey);
+      const r = await withTimeout(verifyReference(ref, userKey), 40000);
+      (counts as any)[r.verdict] = ((counts as any)[r.verdict] || 0) + 1;
+      await safeSend(formatResult(idx + 1, r));
     } catch {
-      results[idx] = null;
-    }
-  });
-
-  const counts = { verified: 0, uncertain: 0, not_found: 0, error: 0 };
-  const blocks: string[] = [];
-  results.forEach((r, idx) => {
-    if (!r) {
       counts.error++;
-      blocks.push(`${VERDICT.error.icon} <b>${idx + 1}. Fehler</b>\n${escapeHtml(refs[idx].raw.slice(0, 200))}`);
-      return;
+      await safeSend(
+        `${VERDICT.error.icon} <b>${idx + 1}. Konnte nicht geprüft werden</b>\n${escapeHtml(
+          ref.raw.slice(0, 200)
+        )}`
+      );
+    } finally {
+      finished++;
     }
-    (counts as any)[r.verdict] = ((counts as any)[r.verdict] || 0) + 1;
-    blocks.push(formatResult(idx + 1, r));
   });
-
-  // Ergebnisse in Etappen senden (Telegram-Limit), je ~8 Einträge pro Nachricht.
-  for (let i = 0; i < blocks.length; i += 8) {
-    await sendMessage(chatId, blocks.slice(i, i + 8).join("\n\n"));
-  }
 
   let summary =
     "<b>Zusammenfassung</b>\n" +
+    `Geprüft: ${finished}/${refs.length}\n` +
     `✅ Gefunden: ${counts.verified}\n` +
     `⚠️ Unsicher: ${counts.uncertain}\n` +
     `❌ Nicht gefunden: ${counts.not_found}` +
-    (counts.error ? `\n⛔ Fehler: ${counts.error}` : "");
+    (counts.error ? `\n⛔ Fehler/Timeout: ${counts.error}` : "");
   if (usingServerKey) summary += reminderFooter();
-  await sendMessage(chatId, summary);
+  await safeSend(summary);
 }
 
 /** Verarbeitet ein einzelnes Telegram-Update (Hintergrundarbeit). */
