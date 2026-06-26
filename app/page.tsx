@@ -53,7 +53,7 @@ const VERDICT_LABEL: Record<string, string> = {
 
 export default function Home() {
   const [text, setText] = useState("");
-  const [phase, setPhase] = useState<"idle" | "parsing" | "review" | "verifying" | "done">("idle");
+  const [phase, setPhase] = useState<"idle" | "parsing" | "normalizing" | "review" | "verifying" | "done">("idle");
   const [parsedRefs, setParsedRefs] = useState<ParsedReference[]>([]);
   const [editItems, setEditItems] = useState<EditItem[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -78,7 +78,7 @@ export default function Home() {
     try { localStorage.setItem("or_key", val); } catch {}
   }
 
-  const busy = phase === "parsing" || phase === "verifying";
+  const busy = phase === "parsing" || phase === "normalizing" || phase === "verifying";
 
   async function parse() {
     setError(null);
@@ -99,8 +99,27 @@ export default function Home() {
         setPhase("idle");
         return;
       }
-      setParsedRefs(refs);
-      setEditItems(refs.map((r) => ({ id: r.id, raw: r.raw, title: r.title, year: r.year })));
+      // Normalisierungsschritt: KI bringt alle Referenzen in ein einheitliches Format
+      setPhase("normalizing");
+      let normalizedRefs = refs;
+      try {
+        const normRes = await fetch("/api/normalize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ references: refs, ...(orKey ? { openrouterKey: orKey } : {}) }),
+        });
+        if (normRes.ok) {
+          const normData = await normRes.json();
+          if (Array.isArray(normData?.references) && normData.references.length) {
+            normalizedRefs = normData.references;
+          }
+        }
+      } catch {
+        // Normalisierung optional – bei Fehler mit Original-Refs weitermachen
+      }
+
+      setParsedRefs(normalizedRefs);
+      setEditItems(normalizedRefs.map((r) => ({ id: r.id, raw: r.raw, title: r.title, year: r.year })));
       setPhase("review");
     } catch (e: any) {
       setError(e?.message || "Parsing fehlgeschlagen.");
@@ -247,7 +266,7 @@ export default function Home() {
     XLSX.writeFile(wb, "referenzencheck.xlsx");
   }
 
-  const showInput = phase === "idle" || phase === "parsing";
+  const showInput = phase === "idle" || phase === "parsing" || phase === "normalizing";
 
   const sortedRows = [...rows].sort((a, b) => {
     const needsCheck = (r: Row) =>
@@ -305,14 +324,25 @@ export default function Home() {
       {/* ── Schritt 1: Eingabe ── */}
       {showInput && (
         <>
-          <div className="phase-guide">
-            <div className="phase-guide-title">Schritt 1 von 3 – Literaturverzeichnis einfügen</div>
-            <ol className="phase-steps">
-              <li>Kopiere dein Literaturverzeichnis vollständig aus Word, PDF oder dem Abgabedokument.</li>
-              <li>Füge den Text unten in das Textfeld ein.</li>
-              <li>Klicke auf <b>„Referenzen erkennen"</b> – die KI erkennt automatisch alle Einträge.</li>
-            </ol>
-          </div>
+          {phase === "normalizing" ? (
+            <div className="phase-guide normalizing-guide">
+              <div className="phase-guide-title">Normalisierung läuft …</div>
+              <ol className="phase-steps">
+                <li>Die KI bringt alle erkannten Referenzen in ein einheitliches Format.</li>
+                <li>Autoren, Titel, Jahr und Quelle werden standardisiert – das verbessert die Trefferquote bei der Suche deutlich.</li>
+                <li>Einen Moment Geduld, das dauert wenige Sekunden …</li>
+              </ol>
+            </div>
+          ) : (
+            <div className="phase-guide">
+              <div className="phase-guide-title">Schritt 1 von 3 – Literaturverzeichnis einfügen</div>
+              <ol className="phase-steps">
+                <li>Kopiere dein Literaturverzeichnis vollständig aus Word, PDF oder dem Abgabedokument.</li>
+                <li>Füge den Text unten in das Textfeld ein.</li>
+                <li>Klicke auf <b>„Referenzen erkennen"</b> – die KI erkennt und normalisiert alle Einträge automatisch.</li>
+              </ol>
+            </div>
+          )}
 
           <section className="card">
             <textarea
@@ -329,6 +359,11 @@ export default function Home() {
                   <>
                     <span className="spin" />
                     Erkenne Referenzen …
+                  </>
+                ) : phase === "normalizing" ? (
+                  <>
+                    <span className="spin" />
+                    Formatiere einheitlich …
                   </>
                 ) : (
                   "Referenzen erkennen"

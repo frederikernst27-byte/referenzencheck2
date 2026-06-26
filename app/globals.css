@@ -93,6 +93,15 @@ header.hero .sub {
   border-radius: 12px;
 }
 
+.phase-guide.normalizing-guide {
+  border-left-color: var(--amber);
+  background: color-mix(in srgb, var(--card) 90%, var(--amber-bg));
+}
+
+.phase-guide.normalizing-guide .phase-guide-title {
+  color: var(--amber);
+}
+
 .phase-guide-title {
   font-size: 0.78rem;
   font-weight: 700;

@@ -188,6 +188,70 @@ export async function parseReferences(text: string, apiKey?: string): Promise<Pa
   return heuristicParse(text);
 }
 
+// ---- Normalisierungs-Modus: Referenzen in einheitliches Suchformat bringen ----
+
+const NORMALIZE_SYSTEM =
+  "Du bist ein Experte für wissenschaftliche Literaturangaben. " +
+  "Du normalisierst bibliografische Einträge in ein einheitliches, " +
+  "maschinenlesbares Format, das für Datenbanksuchen (Google Scholar, Crossref, " +
+  "OpenAlex, Semantic Scholar) optimiert ist. " +
+  "Antworte ausschließlich mit gültigem JSON, ohne Erklärungen.";
+
+function buildNormalizePrompt(refs: ParsedReference[]): string {
+  const entries = refs.map((r, i) => ({
+    index: i,
+    raw: r.raw,
+    title: r.title || "",
+    authors: r.authors || [],
+    year: r.year || null,
+    doi: r.doi || "",
+    venue: r.venue || "",
+  }));
+  return (
+    "Normalisiere jeden der folgenden bibliografischen Einträge in das Format:\n" +
+    "Nachname, V., Nachname2, V2. (Jahr). Vollständiger Titel der Arbeit. " +
+    "Zeitschrift/Konferenz, Band(Heft), Seiten. DOI falls vorhanden.\n\n" +
+    "Regeln:\n" +
+    "- Behalte den vollständigen, korrekten Werktitel – dies ist das wichtigste Suchfeld.\n" +
+    "- Autoren im Format 'Nachname, Vorname-Initial.' – maximal alle Autoren, kein 'et al.'.\n" +
+    "- Jahr in runden Klammern direkt nach den Autoren.\n" +
+    "- Erfinde keine Informationen, die nicht im Original stehen.\n" +
+    "- 'normalized' enthält den vollständig formatierten Eintrag als eine Zeile.\n" +
+    "- Behalte Reihenfolge und Anzahl exakt bei.\n\n" +
+    'Gib NUR JSON zurück: {"references":[{"index":0,"normalized":"..."}]}\n\n' +
+    "Einträge:\n" +
+    JSON.stringify(entries)
+  );
+}
+
+export async function normalizeReferences(
+  refs: ParsedReference[],
+  apiKey?: string
+): Promise<ParsedReference[]> {
+  if (!refs.length) return refs;
+  if (!hasOpenRouter(apiKey)) return refs;
+
+  try {
+    const content = await openRouterChat(
+      [
+        { role: "system", content: NORMALIZE_SYSTEM },
+        { role: "user", content: buildNormalizePrompt(refs) },
+      ],
+      { json: true, temperature: 0, maxTokens: 6000, model: parseModel(), apiKey }
+    );
+    const data = safeJsonParse<{ references?: { index: number; normalized: string }[] }>(content);
+    const normalized = Array.isArray(data?.references) ? data.references : [];
+
+    return refs.map((ref, i) => {
+      const hit = normalized.find((n) => n.index === i);
+      const newRaw = hit?.normalized?.trim();
+      return newRaw && newRaw.length >= 10 ? { ...ref, raw: newRaw } : ref;
+    });
+  } catch {
+    return refs;
+  }
+}
+
 // ---- Structure-Modus: bereits getrennte Einträge nur strukturieren ----
 
 const STRUCTURE_SYSTEM =
