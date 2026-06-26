@@ -43,12 +43,13 @@ async function pool<T>(items: T[], limit: number, worker: (item: T, index: numbe
 
 const VERDICT_LABEL: Record<string, string> = {
   verified: "Gefunden",
-  uncertain: "Unsicher",
-  not_found: "Nicht gefunden",
-  error: "Fehler",
+  uncertain: "Bitte überprüfen",
+  not_found: "Bitte überprüfen",
+  error: "Bitte überprüfen",
   pending: "Wartet",
   checking: "Prüft …",
 };
+
 
 export default function Home() {
   const [text, setText] = useState("");
@@ -255,13 +256,31 @@ export default function Home() {
   return (
     <div className="wrap">
       <header className="hero">
-        <h1>📚 Referenzencheck</h1>
+        <div className="chair-label">Lehrstuhl für Technisches Management (TM)</div>
+        <h1>Referenz.Check</h1>
         <p className="sub">
-          Prüft jede Quelle eines Literaturverzeichnisses gegen Google Scholar (SERP API,
-          ScraperAPI, SearchApi, Scrapingdog) sowie Crossref, OpenAlex und Semantic Scholar –
-          um erfundene bzw. KI-halluzinierte Referenzen aufzudecken und echte Paper-Links
-          zurückzugeben.
+          Prüft jede Quelle eines Literaturverzeichnisses automatisch auf Echtheit –
+          erkennt erfundene bzw. KI-halluzinierte Referenzen und liefert echte Paper-Links.
         </p>
+
+        <div className="steps-guide">
+          <div className="step">
+            <span className="step-num">1</span>
+            <span>Literaturverzeichnis als Text in das Feld unten einfügen</span>
+          </div>
+          <div className="step">
+            <span className="step-num">2</span>
+            <span>Auf <b>„Referenzen erkennen"</b> klicken – die KI erkennt alle Einträge automatisch</span>
+          </div>
+          <div className="step">
+            <span className="step-num">3</span>
+            <span>Erkannte Referenzen prüfen, ggf. korrigieren, dann <b>„Suche starten"</b></span>
+          </div>
+          <div className="step">
+            <span className="step-num">4</span>
+            <span>Ergebnisse auswerten – <span className="step-tag red">Bitte überprüfen</span> markierte Einträge manuell nachschlagen</span>
+          </div>
+        </div>
 
         {status && (
           <div className="badge-row">
@@ -419,13 +438,9 @@ export default function Home() {
               <div className="n">{counts.verified}</div>
               <div className="l">Gefunden</div>
             </div>
-            <div className="stat amber">
-              <div className="n">{counts.uncertain}</div>
-              <div className="l">Unsicher</div>
-            </div>
             <div className="stat red">
-              <div className="n">{counts.not_found}</div>
-              <div className="l">Nicht gefunden</div>
+              <div className="n">{counts.uncertain + counts.not_found}</div>
+              <div className="l">Bitte überprüfen</div>
             </div>
           </div>
 
@@ -436,9 +451,17 @@ export default function Home() {
           )}
 
           <div className="results">
-            {rows.map((row) => (
-              <RefCard key={row.ref.id} row={row} />
-            ))}
+            {[...rows]
+              .sort((a, b) => {
+                const needsCheck = (r: Row) =>
+                  r.result?.verdict === "not_found" ||
+                  r.result?.verdict === "uncertain" ||
+                  r.status === "error";
+                return needsCheck(b) ? 1 : needsCheck(a) ? -1 : 0;
+              })
+              .map((row) => (
+                <RefCard key={row.ref.id} row={row} />
+              ))}
           </div>
         </>
       )}
@@ -477,7 +500,7 @@ export default function Home() {
         Crossref → OpenAlex → Semantic Scholar. Ergebnisse sind Hinweise, keine Garantie –
         bitte kritische Quellen manuell gegenprüfen.
         <br />
-        Kontakt:{" "}
+        Bei Fragen oder Problemen gerne eine E-Mail schreiben:{" "}
         <a href="mailto:frederik.ernst@stud.uni-due.de">frederik.ernst@stud.uni-due.de</a>
         {" · "}
         <a href="https://github.com/frederikernst27-byte/referenzencheck2" target="_blank" rel="noreferrer noopener">
