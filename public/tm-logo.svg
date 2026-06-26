@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 160" width="220" height="160">
+  <defs>
+    <style>
+      .tm-text {
+        font-family: 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', cursive;
+        font-size: 88px;
+        font-weight: bold;
+        fill: #1a5cac;
+      }
+      .sub-text {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13.5px;
+        fill: #1a5cac;
+        text-anchor: middle;
+      }
+    </style>
+  </defs>
+  <text class="tm-text" x="110" y="100" text-anchor="middle">TM</text>
+  <text class="sub-text" x="110" y="122">Information Systems &amp;</text>
+  <text class="sub-text" x="110" y="140">Transformation Management</text>
+</svg>

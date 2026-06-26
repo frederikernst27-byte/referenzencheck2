@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import * as XLSX from "xlsx";
 import type { ParsedReference, VerificationResult } from "@/lib/types";
 
@@ -43,13 +44,12 @@ async function pool<T>(items: T[], limit: number, worker: (item: T, index: numbe
 
 const VERDICT_LABEL: Record<string, string> = {
   verified: "Gefunden",
-  uncertain: "Bitte überprüfen",
-  not_found: "Bitte überprüfen",
-  error: "Bitte überprüfen",
+  uncertain: "Bitte manuell überprüfen",
+  not_found: "Bitte manuell überprüfen",
+  error: "Bitte manuell überprüfen",
   pending: "Wartet",
   checking: "Prüft …",
 };
-
 
 export default function Home() {
   const [text, setText] = useState("");
@@ -80,7 +80,6 @@ export default function Home() {
 
   const busy = phase === "parsing" || phase === "verifying";
 
-  // Schritt 1: Text -> KI-Parsing -> editierbare Vorschau
   async function parse() {
     setError(null);
     setRows([]);
@@ -122,7 +121,6 @@ export default function Home() {
     setEditItems((prev) => [...prev, { id: `new-${Date.now()}`, raw: "" }]);
   }
 
-  // Schritt 2: (korrigierte) Referenzen -> Verifizierung
   async function startSearch() {
     setError(null);
     const rawList = editItems.map((it) => it.raw.trim()).filter(Boolean);
@@ -133,7 +131,6 @@ export default function Home() {
 
     let refs: ParsedReference[];
     if (dirty) {
-      // Nutzer hat etwas geändert -> Felder für die korrigierte Liste neu strukturieren.
       setStarting(true);
       try {
         const res = await fetch("/api/parse", {
@@ -217,8 +214,8 @@ export default function Home() {
   function downloadExcel() {
     const VERDICT_DE: Record<string, string> = {
       verified: "Gefunden",
-      uncertain: "Unsicher",
-      not_found: "Nicht gefunden",
+      uncertain: "Bitte manuell überprüfen",
+      not_found: "Bitte manuell überprüfen",
       error: "Fehler",
     };
     const data = rows.map((row, i) => ({
@@ -240,7 +237,6 @@ export default function Home() {
       Hinweis: row.result?.notes || "",
     }));
     const ws = XLSX.utils.json_to_sheet(data);
-    // Spaltenbreiten
     ws["!cols"] = [
       { wch: 4 }, { wch: 60 }, { wch: 40 }, { wch: 35 }, { wch: 6 }, { wch: 22 },
       { wch: 16 }, { wch: 18 }, { wch: 40 }, { wch: 35 }, { wch: 14 }, { wch: 18 },
@@ -253,34 +249,38 @@ export default function Home() {
 
   const showInput = phase === "idle" || phase === "parsing";
 
+  const sortedRows = [...rows].sort((a, b) => {
+    const needsCheck = (r: Row) =>
+      r.result?.verdict === "not_found" ||
+      r.result?.verdict === "uncertain" ||
+      r.status === "error";
+    return needsCheck(b) ? 1 : needsCheck(a) ? -1 : 0;
+  });
+
   return (
     <div className="wrap">
+      {/* ── Header ── */}
       <header className="hero">
-        <div className="chair-label">Lehrstuhl für Technisches Management (TM)</div>
-        <h1>Referenz.Check</h1>
+        <div className="hero-top">
+          <Image
+            src="/tm-logo.svg"
+            alt="Lehrstuhl Information Systems & Transformation Management"
+            width={90}
+            height={66}
+            priority
+            className="tm-logo"
+          />
+          <div className="hero-title-block">
+            <h1>Referenz Checker</h1>
+            <div className="chair-label">
+              Lehrstuhl Information Systems &amp; Transformation Management
+            </div>
+          </div>
+        </div>
         <p className="sub">
           Prüft jede Quelle eines Literaturverzeichnisses automatisch auf Echtheit –
           erkennt erfundene bzw. KI-halluzinierte Referenzen und liefert echte Paper-Links.
         </p>
-
-        <div className="steps-guide">
-          <div className="step">
-            <span className="step-num">1</span>
-            <span>Literaturverzeichnis als Text in das Feld unten einfügen</span>
-          </div>
-          <div className="step">
-            <span className="step-num">2</span>
-            <span>Auf <b>„Referenzen erkennen"</b> klicken – die KI erkennt alle Einträge automatisch</span>
-          </div>
-          <div className="step">
-            <span className="step-num">3</span>
-            <span>Erkannte Referenzen prüfen, ggf. korrigieren, dann <b>„Suche starten"</b></span>
-          </div>
-          <div className="step">
-            <span className="step-num">4</span>
-            <span>Ergebnisse auswerten – <span className="step-tag red">Bitte überprüfen</span> markierte Einträge manuell nachschlagen</span>
-          </div>
-        </div>
 
         {status && (
           <div className="badge-row">
@@ -302,133 +302,174 @@ export default function Home() {
         )}
       </header>
 
-      {/* Schritt 1: Eingabe */}
+      {/* ── Schritt 1: Eingabe ── */}
       {showInput && (
-        <section className="card">
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={
-              "Literaturverzeichnis hier einfügen …\n\nz. B.:\nAutor, A. (2020). Titel der Arbeit. Journal, 12(3), 1-20."
-            }
-            disabled={busy}
-          />
-          <div className="toolbar">
-            <button className="primary" onClick={parse} disabled={busy || !text.trim()}>
-              {phase === "parsing" ? (
-                <>
-                  <span className="spin" />
-                  Erkenne Referenzen …
-                </>
-              ) : (
-                "Referenzen erkennen"
-              )}
-            </button>
-            <button className="ghost" onClick={() => setText(EXAMPLE)} disabled={busy}>
-              Beispiel einfügen
-            </button>
-            <button className="ghost" onClick={reset} disabled={busy}>
-              Leeren
-            </button>
-            <span className="spacer" />
-            <span className="hint">
-              {text.trim() ? `${text.length} Zeichen` : "Text einfügen, um zu starten"}
-            </span>
+        <>
+          <div className="phase-guide">
+            <div className="phase-guide-title">Schritt 1 von 3 – Literaturverzeichnis einfügen</div>
+            <ol className="phase-steps">
+              <li>Kopiere dein Literaturverzeichnis vollständig aus Word, PDF oder dem Abgabedokument.</li>
+              <li>Füge den Text unten in das Textfeld ein.</li>
+              <li>Klicke auf <b>„Referenzen erkennen"</b> – die KI erkennt automatisch alle Einträge.</li>
+            </ol>
           </div>
-        </section>
-      )}
 
-      {/* Options: eigener OpenRouter-Key */}
-      {showInput && (
-        <details className="options-panel">
-          <summary>⚙ Optionen</summary>
-          <div className="or-key-row">
-            <label htmlFor="or-key">OpenRouter-Key</label>
-            <input
-              id="or-key"
-              className="or-key-input"
-              type="password"
-              placeholder="sk-or-…"
-              value={orKey}
-              onChange={(e) => handleOrKeyChange(e.target.value)}
-              autoComplete="off"
+          <section className="card">
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={
+                "Literaturverzeichnis hier einfügen …\n\nz. B.:\nAutor, A. (2020). Titel der Arbeit. Journal, 12(3), 1-20."
+              }
+              disabled={busy}
             />
-            <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer noopener">
-              Key erstellen →
-            </a>
-          </div>
-          <p className="hint" style={{ marginTop: 6 }}>
-            Trage hier deinen eigenen OpenRouter-Key ein, damit du nicht den Key des
-            Betreibers verbrauchst. Der Key wird nur in diesem Browser gespeichert und
-            ausschließlich für deine Anfragen verwendet – nie dauerhaft auf dem Server.
-          </p>
-        </details>
+            <div className="toolbar">
+              <button className="primary" onClick={parse} disabled={busy || !text.trim()}>
+                {phase === "parsing" ? (
+                  <>
+                    <span className="spin" />
+                    Erkenne Referenzen …
+                  </>
+                ) : (
+                  "Referenzen erkennen"
+                )}
+              </button>
+              <button className="ghost" onClick={() => setText(EXAMPLE)} disabled={busy}>
+                Beispiel einfügen
+              </button>
+              <button className="ghost" onClick={reset} disabled={busy}>
+                Leeren
+              </button>
+              <span className="spacer" />
+              <span className="hint">
+                {text.trim() ? `${text.length} Zeichen` : "Text einfügen, um zu starten"}
+              </span>
+            </div>
+          </section>
+
+          <details className="options-panel">
+            <summary>⚙ Optionen</summary>
+            <div className="or-key-row">
+              <label htmlFor="or-key">OpenRouter-Key</label>
+              <input
+                id="or-key"
+                className="or-key-input"
+                type="password"
+                placeholder="sk-or-…"
+                value={orKey}
+                onChange={(e) => handleOrKeyChange(e.target.value)}
+                autoComplete="off"
+              />
+              <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer noopener">
+                Key erstellen →
+              </a>
+            </div>
+            <p className="hint" style={{ marginTop: 6 }}>
+              Trage hier deinen eigenen OpenRouter-Key ein, damit du nicht den Key des
+              Betreibers verbrauchst. Der Key wird nur in diesem Browser gespeichert und
+              ausschließlich für deine Anfragen verwendet – nie dauerhaft auf dem Server.
+            </p>
+          </details>
+        </>
       )}
 
       {error && <div className="error">{error}</div>}
 
-      {/* Schritt 2: Editierbare Vorschau */}
+      {/* ── Schritt 2: Editierbare Vorschau ── */}
       {phase === "review" && (
-        <section className="card">
-          <div className="review-head">
-            <b>{editItems.length} Referenzen erkannt</b>
-            <span className="hint">Bitte prüfen/korrigieren – eine Referenz pro Feld.</span>
+        <>
+          <div className="phase-guide">
+            <div className="phase-guide-title">Schritt 2 von 3 – Erkannte Referenzen prüfen</div>
+            <ol className="phase-steps">
+              <li>Die KI hat <b>{editItems.length} Referenz(en)</b> erkannt – prüfe, ob alle korrekt erkannt wurden.</li>
+              <li>Korrigiere fehlerhafte Einträge direkt im Textfeld oder lösche sie mit <b>✕</b>.</li>
+              <li>Füge fehlende Einträge mit <b>„+ Eintrag hinzufügen"</b> manuell hinzu.</li>
+              <li>Klicke anschließend auf <b>„Suche starten"</b>, um alle Referenzen zu prüfen.</li>
+            </ol>
           </div>
 
-          <div className="editlist">
-            {editItems.map((it, idx) => (
-              <div className="edititem" key={it.id}>
-                <span className="idx">{idx + 1}</span>
-                <div className="edit-main">
-                  <textarea
-                    value={it.raw}
-                    onChange={(e) => updateItem(it.id, e.target.value)}
-                    rows={2}
-                    placeholder="Referenztext …"
-                  />
-                  {it.title && (
-                    <div className="edit-hint">
-                      Titel erkannt: {it.title}
-                      {it.year ? ` · ${it.year}` : ""}
-                    </div>
-                  )}
+          <section className="card">
+            <div className="review-head">
+              <b>{editItems.length} Referenzen erkannt</b>
+              <span className="hint">Bitte prüfen/korrigieren – eine Referenz pro Feld.</span>
+            </div>
+
+            <div className="editlist">
+              {editItems.map((it, idx) => (
+                <div className="edititem" key={it.id}>
+                  <span className="idx">{idx + 1}</span>
+                  <div className="edit-main">
+                    <textarea
+                      value={it.raw}
+                      onChange={(e) => updateItem(it.id, e.target.value)}
+                      rows={2}
+                      placeholder="Referenztext …"
+                    />
+                    {it.title && (
+                      <div className="edit-hint">
+                        Titel erkannt: {it.title}
+                        {it.year ? ` · ${it.year}` : ""}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    className="del"
+                    onClick={() => deleteItem(it.id)}
+                    title="Eintrag entfernen"
+                    aria-label="Eintrag entfernen"
+                  >
+                    ✕
+                  </button>
                 </div>
-                <button
-                  className="del"
-                  onClick={() => deleteItem(it.id)}
-                  title="Eintrag entfernen"
-                  aria-label="Eintrag entfernen"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
 
-          <div className="toolbar">
-            <button className="primary" onClick={startSearch} disabled={starting || !editItems.length}>
-              {starting ? (
-                <>
-                  <span className="spin" />
-                  Bereite Suche vor …
-                </>
-              ) : (
-                `Suche starten (${editItems.filter((i) => i.raw.trim()).length})`
-              )}
-            </button>
-            <button className="ghost" onClick={addItem} disabled={starting}>
-              + Eintrag hinzufügen
-            </button>
-            <button className="ghost" onClick={() => setPhase("idle")} disabled={starting}>
-              ← Text bearbeiten
-            </button>
-          </div>
-        </section>
+            <div className="toolbar">
+              <button className="primary" onClick={startSearch} disabled={starting || !editItems.length}>
+                {starting ? (
+                  <>
+                    <span className="spin" />
+                    Bereite Suche vor …
+                  </>
+                ) : (
+                  `Suche starten (${editItems.filter((i) => i.raw.trim()).length})`
+                )}
+              </button>
+              <button className="ghost" onClick={addItem} disabled={starting}>
+                + Eintrag hinzufügen
+              </button>
+              <button className="ghost" onClick={() => setPhase("idle")} disabled={starting}>
+                ← Text bearbeiten
+              </button>
+            </div>
+          </section>
+        </>
       )}
 
-      {/* Schritt 3: Ergebnisse */}
+      {/* ── Schritt 3: Ergebnisse ── */}
       {total > 0 && (
         <>
+          {(phase === "verifying" || phase === "done") && (
+            <div className="phase-guide">
+              <div className="phase-guide-title">
+                {phase === "verifying"
+                  ? "Schritt 3 von 3 – Referenzen werden geprüft …"
+                  : "Schritt 3 von 3 – Prüfung abgeschlossen"}
+              </div>
+              <ol className="phase-steps">
+                {phase === "verifying" ? (
+                  <li>Die Referenzen werden gerade gegen Google Scholar, Crossref, OpenAlex und Semantic Scholar geprüft. Bitte warten.</li>
+                ) : (
+                  <>
+                    <li>Einträge mit <span className="inline-tag red">Bitte manuell überprüfen</span> konnten nicht automatisch verifiziert werden – diese stehen oben.</li>
+                    <li>Öffne diese Quellen manuell in Google Scholar oder der Bibliotheksdatenbank und prüfe, ob sie existieren.</li>
+                    <li>Mit <b>„Excel herunterladen"</b> kannst du alle Ergebnisse exportieren und weiterleiten.</li>
+                  </>
+                )}
+              </ol>
+            </div>
+          )}
+
           <div className="summary">
             <div className="stat">
               <div className="n">{total}</div>
@@ -440,7 +481,7 @@ export default function Home() {
             </div>
             <div className="stat red">
               <div className="n">{counts.uncertain + counts.not_found}</div>
-              <div className="l">Bitte überprüfen</div>
+              <div className="l">Manuell prüfen</div>
             </div>
           </div>
 
@@ -451,17 +492,9 @@ export default function Home() {
           )}
 
           <div className="results">
-            {[...rows]
-              .sort((a, b) => {
-                const needsCheck = (r: Row) =>
-                  r.result?.verdict === "not_found" ||
-                  r.result?.verdict === "uncertain" ||
-                  r.status === "error";
-                return needsCheck(b) ? 1 : needsCheck(a) ? -1 : 0;
-              })
-              .map((row) => (
-                <RefCard key={row.ref.id} row={row} />
-              ))}
+            {sortedRows.map((row) => (
+              <RefCard key={row.ref.id} row={row} />
+            ))}
           </div>
         </>
       )}
@@ -496,7 +529,8 @@ export default function Home() {
       )}
 
       <footer>
-        Referenzencheck · Verifizierung über SERP API → ScraperAPI → SearchApi → Scrapingdog →
+        Referenz Checker · Lehrstuhl Information Systems &amp; Transformation Management ·
+        Verifizierung über SERP API → ScraperAPI → SearchApi → Scrapingdog →
         Crossref → OpenAlex → Semantic Scholar. Ergebnisse sind Hinweise, keine Garantie –
         bitte kritische Quellen manuell gegenprüfen.
         <br />

@@ -41,67 +41,85 @@ body {
   padding: 40px 20px 80px;
 }
 
-.chair-label {
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 6px;
+/* ── Hero / Header ── */
+.hero-top {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 10px;
+}
+
+.tm-logo {
+  flex: 0 0 auto;
+}
+
+.hero-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 header.hero h1 {
-  font-size: 2.6rem;
+  font-size: 2.2rem;
   font-weight: 800;
-  margin: 0 0 10px;
-  letter-spacing: -0.03em;
-  background: linear-gradient(135deg, var(--text) 30%, var(--accent));
+  margin: 0;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--text) 40%, var(--accent));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
+.chair-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--accent);
+  margin: 0;
+}
+
 header.hero .sub {
   color: var(--muted);
-  margin: 0 0 20px;
+  margin: 0 0 14px;
   max-width: 680px;
 }
 
-.steps-guide {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0 0 18px;
-  padding: 16px 18px;
+/* ── Phase guide boxes ── */
+.phase-guide {
+  margin-top: 22px;
+  padding: 14px 18px;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  max-width: 680px;
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
 }
 
-.step {
+.phase-guide-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.phase-steps {
+  margin: 0;
+  padding-left: 20px;
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  font-size: 0.9rem;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.phase-steps li {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.phase-steps li b {
   color: var(--text);
 }
 
-.step-num {
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #0b1020;
-  font-size: 0.75rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.step-tag {
+.inline-tag {
   display: inline-block;
   font-size: 0.74rem;
   font-weight: 650;
@@ -110,7 +128,7 @@ header.hero .sub {
   border: 1px solid transparent;
 }
 
-.step-tag.red {
+.inline-tag.red {
   color: var(--red);
   background: var(--red-bg);
   border-color: #7a2c30;
