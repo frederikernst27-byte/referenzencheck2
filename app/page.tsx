@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import * as XLSX from "xlsx";
+import XLSX from "xlsx-js-style";
 import type { ParsedReference, VerificationResult } from "@/lib/types";
 
 type RowStatus = "pending" | "checking" | "done" | "error";
@@ -231,36 +231,130 @@ export default function Home() {
   }
 
   function downloadExcel() {
+    const HEADERS = [
+      "#", "Referenz", "Titel", "Autoren", "Jahr", "DOI",
+      "Ergebnis", "Übereinstimmung (%)", "Gefundener Titel",
+      "Gefundene Autoren", "Gefundenes Jahr", "Quelle", "Link", "Hinweis",
+    ];
+
+    const COL_WIDTHS = [
+      4, 60, 40, 35, 6, 22, 20, 18, 40, 35, 14, 18, 45, 50,
+    ];
+
+    // Farbschema
+    const COLORS = {
+      headerBg: "1A5CAC",   // TM-Blau
+      headerFg: "FFFFFF",
+      verifiedBg: "D6F4E3", verifiedFg: "145C33",
+      uncertainBg: "FFF3CD", uncertainFg: "7A5200",
+      notFoundBg: "FDDEDE",  notFoundFg: "7A1C1C",
+      defaultBg: "F8F9FA",
+      altBg: "FFFFFF",
+    };
+
     const VERDICT_DE: Record<string, string> = {
       verified: "Gefunden",
       uncertain: "Bitte manuell überprüfen",
       not_found: "Bitte manuell überprüfen",
-      error: "Fehler",
+      error: "Bitte manuell überprüfen",
     };
-    const data = rows.map((row, i) => ({
-      "#": i + 1,
-      Referenz: row.ref.raw,
-      Titel: row.ref.title || "",
-      Autoren: row.ref.authors?.join("; ") || "",
-      Jahr: row.ref.year || "",
-      DOI: row.ref.doi || "",
-      Ergebnis: VERDICT_DE[row.result?.verdict || row.status] || row.status,
-      "Übereinstimmung (%)": row.result?.confidence != null
+
+    function cell(v: string | number, extra: Record<string, any> = {}): any {
+      return { v, t: typeof v === "number" ? "n" : "s", ...extra };
+    }
+
+    function headerCell(v: string): any {
+      return {
+        v, t: "s",
+        s: {
+          font: { bold: true, color: { rgb: COLORS.headerFg }, sz: 11 },
+          fill: { fgColor: { rgb: COLORS.headerBg } },
+          alignment: { horizontal: "center", vertical: "center", wrapText: true },
+          border: {
+            bottom: { style: "medium", color: { rgb: "FFFFFF" } },
+          },
+        },
+      };
+    }
+
+    function rowStyle(verdict: string, isAlt: boolean) {
+      let bg = isAlt ? COLORS.altBg : COLORS.defaultBg;
+      let fg = "000000";
+      if (verdict === "verified") { bg = COLORS.verifiedBg; fg = COLORS.verifiedFg; }
+      else if (verdict === "uncertain" || verdict === "not_found" || verdict === "error") {
+        if (verdict === "uncertain") { bg = COLORS.uncertainBg; fg = COLORS.uncertainFg; }
+        else { bg = COLORS.notFoundBg; fg = COLORS.notFoundFg; }
+      }
+      return {
+        fill: { fgColor: { rgb: bg } },
+        font: { color: { rgb: fg }, sz: 10 },
+        alignment: { vertical: "top", wrapText: true },
+        border: {
+          bottom: { style: "thin", color: { rgb: "D0D0D0" } },
+        },
+      };
+    }
+
+    const ws: any = {};
+    const range = { s: { c: 0, r: 0 }, e: { c: HEADERS.length - 1, r: rows.length } };
+    ws["!ref"] = XLSX.utils.encode_range(range);
+    ws["!cols"] = COL_WIDTHS.map((wch) => ({ wch }));
+    ws["!rows"] = [{ hpt: 32 }]; // Header-Zeile höher
+
+    // Header-Zeile
+    HEADERS.forEach((h, c) => {
+      ws[XLSX.utils.encode_cell({ r: 0, c })] = headerCell(h);
+    });
+
+    // Datenzeilen
+    rows.forEach((row, rowIdx) => {
+      const r = rowIdx + 1;
+      const verdict = row.result?.verdict || (row.status === "error" ? "error" : "pending");
+      const isAlt = rowIdx % 2 === 1;
+      const s = rowStyle(verdict, isAlt);
+
+      const confidence = row.result?.confidence != null
         ? Math.round(row.result.confidence * 100)
-        : "",
-      "Gefundener Titel": row.result?.bestMatch?.matchedTitle || "",
-      "Gefundene Autoren": row.result?.bestMatch?.matchedAuthors?.join("; ") || "",
-      "Gefundenes Jahr": row.result?.bestMatch?.matchedYear || "",
-      Quelle: row.result?.bestMatch?.source || "",
-      Links: row.result?.links.map((l) => l.url).join(" | ") || "",
-      Hinweis: row.result?.notes || "",
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    ws["!cols"] = [
-      { wch: 4 }, { wch: 60 }, { wch: 40 }, { wch: 35 }, { wch: 6 }, { wch: 22 },
-      { wch: 16 }, { wch: 18 }, { wch: 40 }, { wch: 35 }, { wch: 14 }, { wch: 18 },
-      { wch: 50 }, { wch: 50 },
-    ];
+        : null;
+
+      const firstLink = row.result?.links?.[0]?.url || "";
+      const linkLabel = row.result?.links?.[0]?.label || firstLink;
+
+      const rowData: (string | number)[] = [
+        rowIdx + 1,
+        row.ref.raw || "-",
+        row.ref.title || "-",
+        row.ref.authors?.join("; ") || "-",
+        row.ref.year || "-",
+        row.ref.doi || "-",
+        VERDICT_DE[verdict] || "-",
+        confidence ?? "-",
+        row.result?.bestMatch?.matchedTitle || "-",
+        row.result?.bestMatch?.matchedAuthors?.join("; ") || "-",
+        row.result?.bestMatch?.matchedYear || "-",
+        row.result?.bestMatch?.source || "-",
+        firstLink ? linkLabel : "-",
+        row.result?.notes || "-",
+      ];
+
+      rowData.forEach((v, c) => {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        // Link-Spalte (Index 12) als anklickbare Hyperlink
+        if (c === 12 && firstLink) {
+          ws[addr] = {
+            v: String(v), t: "s",
+            l: { Target: firstLink },
+            s: {
+              ...s,
+              font: { ...s.font, color: { rgb: "1A5CAC" }, underline: true },
+            },
+          };
+        } else {
+          ws[addr] = { v, t: typeof v === "number" ? "n" : "s", s };
+        }
+      });
+    });
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Referenzencheck");
     XLSX.writeFile(wb, "referenzencheck.xlsx");
