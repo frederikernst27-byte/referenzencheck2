@@ -26,7 +26,7 @@ const YEAR_RE = /\b(1[5-9]\d\d|20\d\d)\b/;
 // Aalst", "von", "de", "zur Muehlen" ab, die sonst (Großbuchstaben-Erwartung)
 // fälschlich als Folgezeile gewertet würden.
 const REF_START_RE =
-  /^\s*(?:\[\d{1,3}\]|\(\d{1,3}\)|\d{1,3}[.)]\s|(?:[a-zäöü]{1,5}\s+){0,2}\p{Lu}[\p{L}'’.-]+,)/u;
+  /^\s*(?:\[\d{1,3}\]|\(\d{1,3}\)|\d{1,3}[.)]\s|(?:[a-zäöü]{1,5}\s+){0,2}\p{Lu}[\p{L}’’.-]+,|\p{Lu}\.\s+\p{Lu})/u;
 
 function isHeading(s: string): boolean {
   return HEADING_RE.test(s.trim());
@@ -164,7 +164,7 @@ async function llmParse(text: string, apiKey?: string): Promise<ParsedReference[
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: buildUserPrompt(text) },
     ],
-    { json: true, temperature: 0, maxTokens: 8000, model: parseModel(), apiKey }
+    { json: true, temperature: 0, maxTokens: 16000, model: parseModel(), apiKey }
   );
   const data = safeJsonParse<{ references?: LlmRef[] }>(content);
   const refs = Array.isArray(data?.references) ? data.references : [];
