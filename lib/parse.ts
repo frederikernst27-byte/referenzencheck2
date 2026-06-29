@@ -25,8 +25,15 @@ const YEAR_RE = /\b(1[5-9]\d\d|20\d\d)\b/;
 // Das optionale Kleinbuchstaben-Präfix deckt Namen wie "vom Brocke", "van der
 // Aalst", "von", "de", "zur Muehlen" ab, die sonst (Großbuchstaben-Erwartung)
 // fälschlich als Folgezeile gewertet würden.
+// Ein neuer Eintrag beginnt, wenn die Zeile mit einem dieser Muster startet:
+//  - Enumerator: [1] / (1) / 1.
+//  - "[Präfix] Nachname,"  (z. B. "vom Brocke,", "van der Aalst,")
+//  - Initialen-Autor:      "S. Alam"  (Großbuchstabe + Punkt + Name)
+//  - Ausgeschriebener Autorenblock: "Jesper Andersson.", "Karl E. Weick.",
+//    "Sabine Brunswicker, …", "Tomasz Lelek and …" – 1–3 Vornamen/Initialen
+//    gefolgt von einem Nachnamen, der mit ‘,’ ‘.’ oder ‘ and ‘ endet.
 const REF_START_RE =
-  /^\s*(?:\[\d{1,3}\]|\(\d{1,3}\)|\d{1,3}[.)]\s|(?:[a-zäöü]{1,5}\s+){0,2}\p{Lu}[\p{L}’’.-]+,|\p{Lu}\.\s+\p{Lu})/u;
+  /^\s*(?:\[\d{1,3}\]|\(\d{1,3}\)|\d{1,3}[.)]\s|(?:[a-zäöü]{1,5}\s+){0,2}\p{Lu}[\p{L}’’.-]+,|\p{Lu}\.\s+\p{Lu}|(?:\p{Lu}[\p{L}’’.-]*\s+){1,3}\p{Lu}[\p{L}’’-]+(?:[,.]|\s+and\b))/u;
 
 function isHeading(s: string): boolean {
   return HEADING_RE.test(s.trim());
@@ -35,6 +42,30 @@ function isHeading(s: string): boolean {
 /** CRLF normalisieren und am Zeilenende getrennte Wörter wieder zusammenführen. */
 function dewrap(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/(\p{L})-\n(\p{L})/gu, "$1$2");
+}
+
+// Eigene Zeile, die nur aus einer Literaturverzeichnis-Überschrift besteht.
+const REFERENCES_SECTION_RE =
+  /^[\s>#*•\-]*(references?|bibliography|literatur(verzeichnis)?|works\s+cited|quellen(verzeichnis)?|reference\s+list|bibliografie|literature\s+cited)\s*:?\s*$/i;
+
+/**
+ * Schneidet aus einem (ggf. vollständigen PDF-/Dokument-)Text den
+ * Literaturverzeichnis-Abschnitt heraus. Sucht die erste eigenständige
+ * Überschrift ("References", "Literaturverzeichnis" …) und gibt alles ab da
+ * zurück. Wird keine gefunden, bleibt der Text unverändert.
+ */
+export function extractReferencesSection(text: string): string {
+  const norm = dewrap(text).replace(/\r/g, "");
+  const lines = norm.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (REFERENCES_SECTION_RE.test(lines[i].trim())) {
+      const rest = lines.slice(i + 1).join("\n").trim();
+      // Nur übernehmen, wenn danach noch substanzieller Text folgt (sonst war
+      // es z. B. nur eine Kopfzeile/ein Inhaltsverzeichnis-Eintrag).
+      if (rest.length >= 40) return rest;
+    }
+  }
+  return norm.trim();
 }
 
 function stripEnumerator(e: string): string {
@@ -136,20 +167,30 @@ function mapLlmRef(r: LlmRef, i: number, forceRaw?: string): ParsedReference | n
 
 const SYSTEM_PROMPT =
   "Du bist ein präziser Parser für wissenschaftliche Literaturverzeichnisse. " +
-  "Du zerlegst Text in einzelne bibliografische Einträge und extrahierst deren Felder. " +
+  "Der Eingabetext stammt häufig aus einem PDF und kann den GESAMTEN Aufsatz enthalten. " +
+  "Du findest zuerst den Literaturverzeichnis-Abschnitt, zerlegst ihn in einzelne " +
+  "bibliografische Einträge und extrahierst deren Felder. " +
   "Antworte ausschließlich mit gültigem JSON, ohne Erklärungen.";
 
 function buildUserPrompt(text: string): string {
   return (
-    "Zerlege das folgende Literaturverzeichnis in einzelne Referenzen. " +
+    "Der folgende Text stammt aus einem Dokument oder PDF und kann den GESAMTEN " +
+    "Aufsatz enthalten (Titelseite, Abstract, Fließtext, Fußnoten, Tabellen). " +
+    "Extrahiere daraus das vollständige Literaturverzeichnis.\n" +
     "Gib NUR JSON in genau dieser Form zurück:\n" +
     '{"references":[{"raw":"<vollständiger Originaltext der Referenz>","title":"<Titel der Arbeit oder \\"\\">","authors":["<Autor>"],"year":<Jahr als Zahl oder null>,"doi":"<DOI oder \\"\\">","venue":"<Journal/Konferenz/Verlag oder \\"\\">"}]}\n' +
     "WICHTIGE Regeln:\n" +
-    "- Der Text stammt oft aus PDFs: Eine Referenz ist häufig über MEHRERE Zeilen umgebrochen. " +
+    "- Finde ZUERST den Beginn des Literaturverzeichnisses (Überschrift wie 'References', " +
+    "'Literaturverzeichnis', 'Bibliography', 'Works Cited', 'Quellenverzeichnis'). " +
+    "Ignoriere ALLES davor (Titel, Abstract, Fließtext) sowie In-Text-Zitate im Fließtext " +
+    "(z. B. '(Müller 2020)', '[12]'), Kopf-/Fußzeilen und reine Seitenzahlen.\n" +
+    "- Extrahiere JEDEN Eintrag des Literaturverzeichnisses vollständig – auch bei 50 oder " +
+    "mehr Referenzen darf KEINE fehlen oder abgeschnitten werden.\n" +
+    "- Eine Referenz ist häufig über MEHRERE Zeilen umgebrochen. " +
     "Führe alle zu einem Eintrag gehörenden Zeilen wieder zusammen, sodass jede Referenz EINEN vollständigen Eintrag ergibt.\n" +
     "- Entferne am Zeilenende durch Silbentrennung getrennte Wörter (z. B. 'maxi-\\nmum' → 'maximum', 'manage-\\nment' → 'management').\n" +
-    "- Schließe Überschriften (z. B. 'References', 'Literaturverzeichnis'), reine Seitenzahlen sowie Kopf-/Fußzeilen AUS.\n" +
-    "- 'raw' enthält den vollständigen, wieder zusammengeführten Eintrag als EINE Zeile (keine Zeilenumbrüche).\n" +
+    "- 'raw' enthält den vollständigen, wieder zusammengeführten Eintrag als EINE Zeile (keine Zeilenumbrüche), " +
+    "optimiert für die Suche bei Google Scholar und Crossref (vollständiger Titel, Autoren, Jahr).\n" +
     "- 'title' ist nur der Werktitel, ohne Autoren/Journal/Jahr.\n" +
     "- Erfinde nichts. Wenn ein Feld fehlt: leerer String bzw. null.\n\n" +
     "Text:\n\"\"\"\n" +
@@ -178,14 +219,20 @@ async function llmParse(text: string, apiKey?: string): Promise<ParsedReference[
 }
 
 export async function parseReferences(text: string, apiKey?: string): Promise<ParsedReference[]> {
+  // Bei ganzen PDFs/Dokumenten zuerst den Literaturverzeichnis-Abschnitt isolieren.
+  const section = extractReferencesSection(text);
+  // Sicherheitskappung für sehr lange Eingaben (z. B. PDF ohne klare Überschrift),
+  // hält Token-Verbrauch und Kosten im Rahmen.
+  const input = section.length > 50000 ? section.slice(0, 50000) : section;
+
   if (hasOpenRouter(apiKey)) {
     try {
-      return await llmParse(text, apiKey);
+      return await llmParse(input, apiKey);
     } catch {
       // Fällt auf die Heuristik zurück, wenn das LLM nicht erreichbar/fehlerhaft ist.
     }
   }
-  return heuristicParse(text);
+  return heuristicParse(input);
 }
 
 // ---- Normalisierungs-Modus: Referenzen in einheitliches Suchformat bringen ----

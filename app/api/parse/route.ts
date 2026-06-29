@@ -24,9 +24,11 @@ export async function POST(req: NextRequest) {
     if (typeof text !== "string" || !text.trim()) {
       return NextResponse.json({ error: "Kein Text übergeben." }, { status: 400 });
     }
-    if (text.length > 60000) {
+    // Großzügige Obergrenze: ganze PDFs/Aufsätze dürfen rein – der Parser
+    // schneidet daraus serverseitig den Literaturverzeichnis-Abschnitt heraus.
+    if (text.length > 200000) {
       return NextResponse.json(
-        { error: "Text zu lang (max. 60.000 Zeichen)." },
+        { error: "Text zu lang (max. 200.000 Zeichen)." },
         { status: 413 }
       );
     }
