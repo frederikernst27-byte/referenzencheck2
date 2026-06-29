@@ -54,8 +54,15 @@ const REFERENCES_SECTION_RE =
  * Überschrift ("References", "Literaturverzeichnis" …) und gibt alles ab da
  * zurück. Wird keine gefunden, bleibt der Text unverändert.
  */
+// Inline-Überschrift mitten im Fließtext (PDF), direkt gefolgt vom Beginn der
+// nummerierten Referenzliste ("References 1. …" / "Bibliography [1] …").
+const REFERENCES_INLINE_RE =
+  /\b(?:references|bibliography|literatur(?:verzeichnis)?|works\s+cited|quellen(?:verzeichnis)?|reference\s+list|bibliografie)\b\s*[:.]?\s+(?=(?:\[?1\]?[.)]\s)|(?:\(1\)\s))/i;
+
 export function extractReferencesSection(text: string): string {
   const norm = dewrap(text).replace(/\r/g, "");
+
+  // 1) Saubere Eingabe: Überschrift steht auf einer eigenen Zeile.
   const lines = norm.split("\n");
   for (let i = 0; i < lines.length; i++) {
     if (REFERENCES_SECTION_RE.test(lines[i].trim())) {
@@ -65,6 +72,14 @@ export function extractReferencesSection(text: string): string {
       if (rest.length >= 40) return rest;
     }
   }
+
+  // 2) PDF-Fließtext: Überschrift steht inline, direkt gefolgt von "1."/"[1]".
+  const inline = norm.match(REFERENCES_INLINE_RE);
+  if (inline && inline.index !== undefined) {
+    const after = norm.slice(inline.index + inline[0].length).trim();
+    if (after.length >= 40) return after;
+  }
+
   return norm.trim();
 }
 
