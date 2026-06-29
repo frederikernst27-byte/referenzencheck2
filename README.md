@@ -14,8 +14,11 @@ zurückgegeben.
 2. **Verifizierung** – Jede Referenz wird nacheinander gegen folgende Dienste
    geprüft (Kette stoppt beim ersten sicheren Treffer):
 
-   `SERP API` → `ScraperAPI` → `SearchApi` → `Scrapingdog`
+   `SERP API` → `ScrapingBee` → `ScraperAPI` → `SearchApi` → `Scrapingdog`
    → `Crossref` → `OpenAlex` → `Semantic Scholar`
+
+   `ScrapingBee` dient als Backup für die SERP API: Fällt diese aus (z. B.
+   Kontingent aufgebraucht), übernimmt automatisch die nächste Quelle.
 
 3. **Bewertung** – Titel-Ähnlichkeit (Dice-Koeffizient + Token-Containment)
    und DOI-Abgleich ergeben einen Score. Optional bewertet DeepSeek zusätzlich,
@@ -47,6 +50,7 @@ Alle Keys sind **optional** – fehlt ein Key, wird die jeweilige Quelle
 | Variable | Zweck |
 |---|---|
 | `SERPAPI_KEY` | Google Scholar via SERP API |
+| `SCRAPINGBEE_KEY` | Google Scholar via ScrapingBee (Backup für SERP API) |
 | `SCRAPERAPI_KEY` | Google Scholar via ScraperAPI |
 | `SEARCHAPI_KEY` | Google Scholar via SearchApi.io |
 | `SCRAPINGDOG_KEY` | Google Scholar via Scrapingdog |

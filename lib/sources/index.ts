@@ -1,5 +1,6 @@
 import type { Source } from "../types";
 import { serpapi } from "./serpapi";
+import { scrapingbee } from "./scrapingbee";
 import { scraperapi } from "./scraperapi";
 import { searchapi } from "./searchapi";
 import { scrapingdog } from "./scrapingdog";
@@ -7,10 +8,14 @@ import { crossref } from "./crossref";
 import { openalex } from "./openalex";
 import { semanticscholar } from "./semanticscholar";
 
-// Reihenfolge der Verifizierungs-Kette (vom Nutzer vorgegeben):
-// SERP API -> ScraperAPI -> SearchApi -> Scrapingdog -> Crossref -> OpenAlex -> Semantic Scholar
+// Reihenfolge der Verifizierungs-Kette (Kette stoppt beim ersten sicheren Treffer):
+// SERP API -> ScrapingBee -> ScraperAPI -> SearchApi -> Scrapingdog
+//   -> Crossref -> OpenAlex -> Semantic Scholar
+// ScrapingBee steht direkt hinter der SERP API und springt als Backup ein,
+// wenn diese ausfällt (z. B. Kontingent/Token aufgebraucht).
 const ALL_SOURCES: Source[] = [
   serpapi,
+  scrapingbee,
   scraperapi,
   searchapi,
   scrapingdog,
