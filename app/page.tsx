@@ -53,6 +53,7 @@ const VERDICT_LABEL: Record<string, string> = {
 
 export default function Home() {
   const [text, setText] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [phase, setPhase] = useState<"idle" | "parsing" | "normalizing" | "review" | "verifying" | "done">("idle");
   const [parsedRefs, setParsedRefs] = useState<ParsedReference[]>([]);
   const [editItems, setEditItems] = useState<EditItem[]>([]);
@@ -78,7 +79,27 @@ export default function Home() {
     try { localStorage.setItem("or_key", val); } catch {}
   }
 
-  const busy = phase === "parsing" || phase === "normalizing" || phase === "verifying";
+  const busy = phase === "parsing" || phase === "normalizing" || phase === "verifying" || pdfLoading;
+
+  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setPdfLoading(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/pdf", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "PDF-Verarbeitung fehlgeschlagen.");
+      setText(data.text);
+    } catch (err: any) {
+      setError(err?.message || "PDF konnte nicht gelesen werden.");
+    } finally {
+      setPdfLoading(false);
+    }
+  }
 
   async function parse() {
     setError(null);
@@ -431,8 +452,7 @@ export default function Home() {
             <div className="phase-guide">
               <div className="phase-guide-title">Schritt 1 von 3 – Literaturverzeichnis einfügen</div>
               <ol className="phase-steps">
-                <li>Kopiere dein Literaturverzeichnis vollständig aus Word, PDF oder dem Abgabedokument.</li>
-                <li>Füge den Text unten in das Textfeld ein.</li>
+                <li>Lade dein PDF direkt hoch (Button <b>„PDF hochladen"</b>) – oder kopiere das Literaturverzeichnis manuell in das Textfeld.</li>
                 <li>Klicke auf <b>„Referenzen erkennen"</b> – die KI erkennt und normalisiert alle Einträge automatisch.</li>
               </ol>
             </div>
@@ -463,6 +483,23 @@ export default function Home() {
                   "Referenzen erkennen"
                 )}
               </button>
+              <label className={`ghost btn-label${busy ? " disabled" : ""}`}>
+                {pdfLoading ? (
+                  <>
+                    <span className="spin" />
+                    PDF wird geladen …
+                  </>
+                ) : (
+                  "PDF hochladen"
+                )}
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  style={{ display: "none" }}
+                  onChange={handlePdfUpload}
+                  disabled={busy}
+                />
+              </label>
               <button className="ghost" onClick={() => setText(EXAMPLE)} disabled={busy}>
                 Beispiel einfügen
               </button>

@@ -248,6 +248,29 @@ button.ghost {
   background: transparent;
 }
 
+label.btn-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 0.45rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  transition: background 0.15s;
+}
+label.btn-label:hover:not(.disabled) {
+  background: var(--hover, #f0f0f0);
+}
+label.btn-label.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .spacer {
   flex: 1;
 }
