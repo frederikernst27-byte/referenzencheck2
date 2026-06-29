@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PDFParse } from "pdf-parse";
+import { extractText, getDocumentProxy } from "unpdf";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -13,16 +13,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Keine PDF-Datei übermittelt." }, { status: 400 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const parser = new PDFParse({ data: buffer });
-    const result = await parser.getText();
-    const text = result.text?.trim();
+    const buffer = new Uint8Array(await file.arrayBuffer());
+    // unpdf nutzt einen serverless-tauglichen pdf.js-Build (keine nativen
+    // Abhängigkeiten, kein Worker) – läuft auf Vercel ohne Crash.
+    const pdf = await getDocumentProxy(buffer);
+    const { text } = await extractText(pdf, { mergePages: true });
 
-    if (!text) {
+    const cleaned = text.trim();
+
+    if (!cleaned) {
       return NextResponse.json({ error: "PDF enthält keinen lesbaren Text." }, { status: 422 });
     }
 
-    return NextResponse.json({ text });
+    return NextResponse.json({ text: cleaned });
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message || "PDF-Verarbeitung fehlgeschlagen." },
