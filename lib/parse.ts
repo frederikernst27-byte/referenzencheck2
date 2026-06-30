@@ -83,6 +83,75 @@ export function extractReferencesSection(text: string): string {
   return norm.trim();
 }
 
+/** Findet eine Textstelle, tolerant gegenüber Whitespace-/Trennungs-Unterschieden. */
+function findLoose(haystack: string, needle: string): number {
+  const direct = haystack.indexOf(needle);
+  if (direct >= 0) return direct;
+  const words = needle.split(/\s+/).filter(Boolean).slice(0, 6);
+  if (!words.length) return -1;
+  const pattern = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
+  try {
+    const m = haystack.match(new RegExp(pattern, "i"));
+    return m && m.index !== undefined ? m.index : -1;
+  } catch {
+    return -1;
+  }
+}
+
+const FIND_REFS_SYSTEM =
+  "Du findest in wissenschaftlichen Texten den Beginn des Literaturverzeichnisses. " +
+  "Antworte ausschließlich mit gültigem JSON.";
+
+function buildFindRefsPrompt(text: string): string {
+  return (
+    "Unten steht der Textinhalt eines wissenschaftlichen PDFs (oft der ganze Aufsatz). " +
+    "Finde den Beginn des Literaturverzeichnisses bzw. der Quellen-/Referenzliste. " +
+    "Die Überschrift kann variieren ('References', 'Bibliography', 'Literatur', " +
+    "'Literaturverzeichnis', 'Quellen', 'Quellenverzeichnis', 'Works Cited') oder ganz fehlen. " +
+    "Gib als JSON die ersten 10–15 Wörter des ALLERERSTEN Literatureintrags zurück, " +
+    "exakt so wie sie im Text stehen (NICHT die Überschrift selbst, sondern den ersten echten Eintrag). " +
+    "Enthält der Text kein Literaturverzeichnis, gib einen leeren String.\n" +
+    'Antworte NUR als JSON: {"start":"<exakte erste Wörter des ersten Eintrags>"}\n\n' +
+    'Text:\n"""\n' +
+    text.slice(0, 120000) +
+    '\n"""'
+  );
+}
+
+/**
+ * Wie extractReferencesSection, aber mit KI-Absicherung: Findet die Heuristik
+ * keine Überschrift, fragt die KI nach dem Beginn des Literaturverzeichnisses
+ * (robust gegen abweichende/fehlende Überschriften). Die KI liefert nur die
+ * ersten Wörter des ersten Eintrags – der Text wird dort abgeschnitten.
+ */
+export async function extractReferencesSectionSmart(text: string, apiKey?: string): Promise<string> {
+  const norm = dewrap(text).replace(/\r/g, "").trim();
+  const heuristic = extractReferencesSection(text);
+
+  // Heuristik hat eine Überschrift gefunden (Ergebnis deutlich kürzer) -> fertig.
+  if (heuristic.length < norm.length - 40) return heuristic;
+  if (!hasOpenRouter(apiKey)) return heuristic;
+
+  try {
+    const content = await openRouterChat(
+      [
+        { role: "system", content: FIND_REFS_SYSTEM },
+        { role: "user", content: buildFindRefsPrompt(norm) },
+      ],
+      { json: true, temperature: 0, maxTokens: 300, model: parseModel(), apiKey }
+    );
+    const data = safeJsonParse<{ start?: string }>(content);
+    const start = (data?.start || "").trim();
+    if (start.length >= 8) {
+      const idx = findLoose(norm, start);
+      if (idx >= 0) return norm.slice(idx).trim();
+    }
+  } catch {
+    // Fällt auf die Heuristik zurück.
+  }
+  return heuristic;
+}
+
 function stripEnumerator(e: string): string {
   return e
     .replace(/^\s*(?:\[\d{1,3}\]|\(\d{1,3}\)|\d{1,3}[.)])\s+/, "")

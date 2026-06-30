@@ -29,7 +29,7 @@ interface SourceStatus {
 
 // Bei jeder Änderung erhöhen – wird oben im Header angezeigt, damit man sieht,
 // welche Version gerade live ist.
-const APP_VERSION = "v0.5.0";
+const APP_VERSION = "v0.6.0";
 
 const EXAMPLE = `1. Vaswani, A., Shazeer, N., Parmar, N., et al. (2017). Attention is all you need. Advances in Neural Information Processing Systems, 30.
 2. Devlin, J., Chang, M. W., Lee, K., & Toutanova, K. (2019). BERT: Pre-training of deep bidirectional transformers for language understanding. NAACL-HLT.
@@ -94,6 +94,7 @@ export default function Home() {
     try {
       const form = new FormData();
       form.append("file", file);
+      if (orKey) form.append("openrouterKey", orKey);
       const res = await fetch("/api/pdf", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "PDF-Verarbeitung fehlgeschlagen.");

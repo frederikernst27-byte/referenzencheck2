@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractText, getDocumentProxy } from "unpdf";
-import { extractReferencesSection } from "@/lib/parse";
+import { extractReferencesSectionSmart } from "@/lib/parse";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -9,6 +9,8 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file");
+    const keyRaw = formData.get("openrouterKey");
+    const apiKey = typeof keyRaw === "string" && keyRaw.trim() ? keyRaw.trim() : undefined;
 
     if (!file || typeof file === "string") {
       return NextResponse.json({ error: "Keine PDF-Datei übermittelt." }, { status: 400 });
@@ -28,7 +30,8 @@ export async function POST(req: NextRequest) {
 
     // Bei ganzen Artikeln direkt nur den Literaturverzeichnis-Abschnitt zurückgeben,
     // damit der Nutzer sofort die Referenzen sieht (statt des ganzen PDFs).
-    const references = extractReferencesSection(cleaned);
+    // Mit KI-Absicherung für abweichende/fehlende Überschriften.
+    const references = await extractReferencesSectionSmart(cleaned, apiKey);
 
     return NextResponse.json({ text: references });
   } catch (e: any) {
