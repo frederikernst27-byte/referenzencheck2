@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractText, getDocumentProxy } from "unpdf";
+import { extractReferencesSection } from "@/lib/parse";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -25,7 +26,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "PDF enthält keinen lesbaren Text." }, { status: 422 });
     }
 
-    return NextResponse.json({ text: cleaned });
+    // Bei ganzen Artikeln direkt nur den Literaturverzeichnis-Abschnitt zurückgeben,
+    // damit der Nutzer sofort die Referenzen sieht (statt des ganzen PDFs).
+    const references = extractReferencesSection(cleaned);
+
+    return NextResponse.json({ text: references });
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message || "PDF-Verarbeitung fehlgeschlagen." },

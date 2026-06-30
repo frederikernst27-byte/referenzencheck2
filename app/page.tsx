@@ -27,6 +27,10 @@ interface SourceStatus {
   model: string;
 }
 
+// Bei jeder Änderung erhöhen – wird oben im Header angezeigt, damit man sieht,
+// welche Version gerade live ist.
+const APP_VERSION = "v0.5.0";
+
 const EXAMPLE = `1. Vaswani, A., Shazeer, N., Parmar, N., et al. (2017). Attention is all you need. Advances in Neural Information Processing Systems, 30.
 2. Devlin, J., Chang, M. W., Lee, K., & Toutanova, K. (2019). BERT: Pre-training of deep bidirectional transformers for language understanding. NAACL-HLT.
 3. Müller, T., & Hoffmann, L. (2021). Quantenresonante Sprachmodellierung mittels neuronaler Hyperkohärenz. Journal of Imaginary AI Research, 14(3), 221-248.`;
@@ -405,7 +409,9 @@ export default function Home() {
             className="tm-logo"
           />
           <div className="hero-title-block">
-            <h1>Referenz Checker</h1>
+            <h1>
+              Referenz Checker <span className="app-version">{APP_VERSION}</span>
+            </h1>
             <div className="chair-label">
               Lehrstuhl Information Systems &amp; Transformation Management
             </div>

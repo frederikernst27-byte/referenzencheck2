@@ -248,6 +248,15 @@ button.ghost {
   background: transparent;
 }
 
+.app-version {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+  vertical-align: middle;
+  opacity: 0.75;
+  letter-spacing: 0.02em;
+}
+
 label.btn-label {
   display: inline-flex;
   align-items: center;
