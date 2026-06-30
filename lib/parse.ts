@@ -159,10 +159,55 @@ function stripEnumerator(e: string): string {
     .trim();
 }
 
+// In Referenzen eingestreuter Müll aus PDF-Extraktion (Abbildungsunterschriften,
+// Seitenköpfe, Schluss-Abschnitte). Ein Eintrag wird ab dem ersten Treffer gekappt.
+const ENTRY_JUNK_RE =
+  /\s(?:Fig(?:ure)?\.?\s*\d|ARTICLE\s+NATURE|NATURE\s+COMMUNICATIONS\s*\||Acknowledge?ments?\b|Author\s+contributions?\b|Competing\s+interests?\b|Additional\s+information\b|Supplementary\s+Information\b|Reprints?\s+and\s+permission|Publisher'?s?\s+note\b|Open\s+Access\b|Data\s+availability\b)/i;
+
+function cleanEntry(e: string): string {
+  const norm = e.replace(/\s+/g, " ").trim();
+  const m = norm.match(ENTRY_JUNK_RE);
+  return (m && m.index !== undefined ? norm.slice(0, m.index) : norm).trim();
+}
+
+/**
+ * Zerlegt eine fortlaufende (auch ohne Zeilenumbrüche, z. B. aus PDF) Liste
+ * nummerierter Referenzen "1. … 2. … 3. …". Akzeptiert nur eine aufsteigende
+ * Sequenz (1,2,3,…), damit Band-/Jahreszahlen im Text keine falschen Grenzen
+ * erzeugen.
+ */
+function splitNumberedInline(text: string): string[] {
+  const re = /(\d{1,3})\.[ \t]+(?=[\p{Lu}"'“„\[(])/gu;
+  const boundaries: { idx: number; len: number }[] = [];
+  let expected = 1;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (parseInt(m[1], 10) === expected) {
+      boundaries.push({ idx: m.index, len: m[0].length });
+      expected++;
+    }
+  }
+  if (boundaries.length < 3) return [];
+
+  const entries: string[] = [];
+  for (let i = 0; i < boundaries.length; i++) {
+    const start = boundaries[i].idx + boundaries[i].len;
+    const end = i + 1 < boundaries.length ? boundaries[i + 1].idx : text.length;
+    const entry = cleanEntry(text.slice(start, end));
+    if (entry.length >= 8) entries.push(entry);
+  }
+  return entries;
+}
+
 /** Heuristische Zerlegung eines Literaturverzeichnisses in einzelne Einträge. */
 export function heuristicSplit(text: string): string[] {
   const cleaned = dewrap(text).trim();
   if (!cleaned) return [];
+
+  // 0) Fortlaufende nummerierte Liste (auch ohne Zeilenumbrüche, z. B. aus PDF):
+  //    "1. … 2. … 3. …" – sehr starkes Signal, zuerst probieren.
+  const numbered = splitNumberedInline(cleaned);
+  if (numbered.length >= 3) return numbered;
 
   // 1) Nummerierte Einträge: [1] ... / 1. ... / (1) ...  (starkes Signal)
   const enumerated = cleaned.split(/\n(?=\s*(?:\[\d{1,3}\]|\(\d{1,3}\)|\d{1,3}[.)])\s+)/);
@@ -309,6 +354,15 @@ export async function parseReferences(text: string, apiKey?: string): Promise<Pa
   // hält Token-Verbrauch und Kosten im Rahmen.
   const input = section.length > 50000 ? section.slice(0, 50000) : section;
 
+  // Wenn die Heuristik den Text klar in mehrere Einträge zerlegt (z. B. eine
+  // nummerierte Liste), ist diese Trennung zuverlässiger als das LLM. Dann nur
+  // noch Felder strukturieren – ohne erneut zu splitten/zusammenzuführen.
+  const split = heuristicSplit(input);
+  if (split.length >= 3) {
+    return structureReferences(split, apiKey);
+  }
+
+  // Sonst: LLM den (unklaren) Text selbst zerlegen lassen.
   if (hasOpenRouter(apiKey)) {
     try {
       return await llmParse(input, apiKey);

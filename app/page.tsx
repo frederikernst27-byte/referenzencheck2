@@ -29,7 +29,7 @@ interface SourceStatus {
 
 // Bei jeder Änderung erhöhen – wird oben im Header angezeigt, damit man sieht,
 // welche Version gerade live ist.
-const APP_VERSION = "v0.6.0";
+const APP_VERSION = "v0.7.0";
 
 const EXAMPLE = `1. Vaswani, A., Shazeer, N., Parmar, N., et al. (2017). Attention is all you need. Advances in Neural Information Processing Systems, 30.
 2. Devlin, J., Chang, M. W., Lee, K., & Toutanova, K. (2019). BERT: Pre-training of deep bidirectional transformers for language understanding. NAACL-HLT.
