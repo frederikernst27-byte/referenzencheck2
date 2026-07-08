@@ -12,5 +12,6 @@ export async function GET() {
     sources,
     llm: hasOpenRouter(),
     model: process.env.OPENROUTER_MODEL || "deepseek/deepseek-chat",
+    hallucinator: Boolean(process.env.HALLUCINATOR_SERVICE_URL),
   });
 }

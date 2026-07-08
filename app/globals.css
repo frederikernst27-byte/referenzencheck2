@@ -608,3 +608,52 @@ a.alllinks-btn {
   font-size: 0.82rem;
   white-space: nowrap;
 }
+
+/* --- Anhängen ans Ende von app/globals.css (für PDF-Upload-Toggle) --- */
+
+.mode-toggle {
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 16px;
+  padding: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 16px;
+  border-radius: 9px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.mode-btn.active {
+  background: var(--card-2);
+  color: var(--text);
+}
+
+input[type="file"] {
+  display: block;
+  width: 100%;
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 10px;
+  background: var(--bg-2);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+
+input[type="file"]::file-selector-button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  padding: 7px 12px;
+  background: var(--card-2);
+  color: var(--text);
+  margin-right: 10px;
+}

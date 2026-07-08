@@ -5,6 +5,16 @@ Ein Scanner für Literaturverzeichnisse, der prüft, ob die zitierten Quellen
 aufzudecken. Am Ende werden die Links zu den tatsächlich gefundenen Papern
 zurückgegeben.
 
+Es gibt zwei Eingabewege:
+
+- **Text einfügen** – Literaturverzeichnis als Text einfügen oder per PDF-Button
+  den Text extrahieren lassen (bestehender Weg, siehe unten).
+- **PDF direkt prüfen** *(Beta, optional)* – ganzes PDF hochladen; Extraktion
+  und Prüfung laufen in einem Schritt über die separat gehostete
+  [`hallucinator`](https://github.com/gianlucasb/hallucinator)-Engine (siehe
+  „PDF-Direktprüfung" weiter unten). Ohne konfigurierten Dienst bleibt der Tab
+  sichtbar, aber deaktiviert.
+
 ## Funktionsweise
 
 1. **Parsing** – Das eingefügte Literaturverzeichnis wird mit **DeepSeek
@@ -26,11 +36,36 @@ zurückgegeben.
 4. **Ergebnis** – Pro Referenz: `Gefunden` / `Unsicher` /
    `Nicht gefunden (mögliche Halluzination)` plus alle gefundenen Links.
 
+## PDF-Direktprüfung (Beta, optional)
+
+Statt Text einzufügen, kann im Modus „PDF direkt prüfen" ein ganzes PDF
+hochgeladen werden. Die App leitet es an einen separat gehosteten
+`hallucinator-service` weiter (Env-Var `HALLUCINATOR_SERVICE_URL`), der:
+
+1. die Referenzen direkt aus dem PDF extrahiert (Rust/MuPDF, kein manuelles
+   Kopieren nötig),
+2. jede Referenz parallel gegen CrossRef, arXiv, DBLP, Semantic Scholar u. a.
+   prüft, inkl. Retraction-Check,
+3. die Ergebnisse mit denselben Komponenten wie im Text-Modus anzeigt
+   (Übersicht, Kartenliste, Excel-Export) – allerdings ohne die
+   Zwischenschritt-Review einzelner Referenzen.
+
+Der Dienst läuft **nicht** auf Vercel (Python/Rust-Paket, längere Laufzeiten
+pro Referenz als Vercel-Functions erlauben), sondern separat z. B. auf
+Railway oder Render. Deploy-Anleitung, Kosten und Grenzen: siehe
+[`hallucinator-service/README.md`](hallucinator-service/README.md). Ist
+`HALLUCINATOR_SERVICE_URL` nicht gesetzt, bleibt der Tab im UI sichtbar, aber
+deaktiviert.
+
 ## Tech-Stack
 
-- Next.js 14 (App Router, TypeScript)
-- Serverless Route Handlers (`/api/parse`, `/api/verify`, `/api/status`)
+- Next.js (App Router, TypeScript)
+- Serverless Route Handlers (`/api/parse`, `/api/verify`, `/api/status`,
+  `/api/pdf`, `/api/pdf-verify`)
 - Keine Datenbank nötig – zustandslos, ideal für Vercel
+- PDF-Direktprüfung: separater `hallucinator-service` (Python/FastAPI,
+  Rust-Paket `hallucinator`), nicht auf Vercel – siehe
+  `hallucinator-service/README.md`
 
 ## Lokale Entwicklung
 
@@ -62,6 +97,7 @@ Alle Keys sind **optional** – fehlt ein Key, wird die jeweilige Quelle
 | `TELEGRAM_BOT_TOKEN` | Token des Telegram-Bots (von @BotFather) |
 | `TELEGRAM_WEBHOOK_SECRET` | Geheimnis zur Absicherung des Telegram-Webhooks |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel KV / Upstash – Speicher für `/setkey` (alternativ `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`) |
+| `HALLUCINATOR_SERVICE_URL` | URL des separat gehosteten `hallucinator-service` (aktiviert den Modus „PDF direkt prüfen") |
 
 ## Telegram-Bot
 
@@ -91,10 +127,22 @@ dem Betreiber Kosten). `/setkey` benötigt einen persistenten Speicher
 > Environment-Variablen. Wurde er versehentlich öffentlich, bei BotFather mit
 > `/revoke` neu generieren.
 
-## Deployment (Vercel)
+## Deployment
+
+### Frontend (Vercel)
 
 Das Projekt ist ein Standard-Next.js-Projekt und wird von Vercel automatisch
-erkannt. Environment-Variablen im Vercel-Dashboard hinterlegen.
+erkannt. Environment-Variablen im Vercel-Dashboard hinterlegen, inkl.
+`HALLUCINATOR_SERVICE_URL` (optional, siehe oben).
 
 > **Hinweis:** API-Keys gehören ausschließlich in Environment-Variablen,
 > niemals in den Code oder ins Repo.
+
+### PDF-Direktprüfung (optional, nicht Vercel)
+
+Für den Modus „PDF direkt prüfen" zusätzlich `hallucinator-service/` als
+eigenen Docker-Dienst bei Railway oder Render deployen (Details, Kosten und
+Grenzen: `hallucinator-service/README.md`), danach die öffentliche URL als
+`HALLUCINATOR_SERVICE_URL` in Vercel eintragen. Ohne diesen Schritt bleibt
+der Text-Modus vollständig nutzbar, der PDF-Direktprüfung-Tab ist nur
+deaktiviert.

@@ -25,11 +25,12 @@ interface SourceStatus {
   sources: { name: string; active: boolean }[];
   llm: boolean;
   model: string;
+  hallucinator: boolean;
 }
 
 // Bei jeder Änderung erhöhen – wird oben im Header angezeigt, damit man sieht,
 // welche Version gerade live ist.
-const APP_VERSION = "v0.7.0";
+const APP_VERSION = "v0.8.0";
 
 const EXAMPLE = `1. Vaswani, A., Shazeer, N., Parmar, N., et al. (2017). Attention is all you need. Advances in Neural Information Processing Systems, 30.
 2. Devlin, J., Chang, M. W., Lee, K., & Toutanova, K. (2019). BERT: Pre-training of deep bidirectional transformers for language understanding. NAACL-HLT.
@@ -56,8 +57,10 @@ const VERDICT_LABEL: Record<string, string> = {
 };
 
 export default function Home() {
+  const [mode, setMode] = useState<"text" | "pdf-verify">("text");
   const [text, setText] = useState("");
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfVerifying, setPdfVerifying] = useState(false);
   const [phase, setPhase] = useState<"idle" | "parsing" | "normalizing" | "review" | "verifying" | "done">("idle");
   const [parsedRefs, setParsedRefs] = useState<ParsedReference[]>([]);
   const [editItems, setEditItems] = useState<EditItem[]>([]);
@@ -83,7 +86,8 @@ export default function Home() {
     try { localStorage.setItem("or_key", val); } catch {}
   }
 
-  const busy = phase === "parsing" || phase === "normalizing" || phase === "verifying" || pdfLoading;
+  const busy =
+    phase === "parsing" || phase === "normalizing" || phase === "verifying" || pdfLoading || pdfVerifying;
 
   async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -103,6 +107,51 @@ export default function Home() {
       setError(err?.message || "PDF konnte nicht gelesen werden.");
     } finally {
       setPdfLoading(false);
+    }
+  }
+
+  // "PDF direkt prüfen": komplettes PDF geht an den separaten
+  // hallucinator-service (/api/pdf-verify) – Extraktion + Verifizierung
+  // laufen dort in einem Schritt, ohne manuelle Review-Phase.
+  async function handlePdfVerifyUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    setRows([]);
+    setPdfVerifying(true);
+    setPhase("verifying");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/pdf-verify", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "PDF-Prüfung fehlgeschlagen.");
+
+      const refs: ParsedReference[] = data.references || [];
+      const resultsByRef = new Map<string, VerificationResult>(
+        (data.results as VerificationResult[] | undefined)?.map((r) => [r.reference.id, r]) || []
+      );
+      const newRows: Row[] = refs.map((ref) => {
+        const result = resultsByRef.get(ref.id);
+        return result
+          ? { ref, status: "done", result }
+          : { ref, status: "error", error: "Keine Verifizierung erhalten." };
+      });
+
+      if (!newRows.length) {
+        setError("Es konnten keine Referenzen im PDF erkannt werden.");
+        setPhase("idle");
+        return;
+      }
+
+      setRows(newRows);
+      setPhase("done");
+    } catch (err: any) {
+      setError(err?.message || "PDF-Prüfung fehlgeschlagen.");
+      setPhase("idle");
+    } finally {
+      setPdfVerifying(false);
     }
   }
 
@@ -439,6 +488,10 @@ export default function Home() {
               <span className="dot" />
               KI: {status.llm ? status.model : "aus"}
             </span>
+            <span className={`chip ${status.hallucinator ? "on" : "off"}`}>
+              <span className="dot" />
+              PDF-Direktprüfung: {status.hallucinator ? "aktiv" : "aus"}
+            </span>
           </div>
         )}
       </header>
@@ -446,103 +499,174 @@ export default function Home() {
       {/* ── Schritt 1: Eingabe ── */}
       {showInput && (
         <>
-          {phase === "normalizing" ? (
-            <div className="phase-guide normalizing-guide">
-              <div className="phase-guide-title">Normalisierung läuft …</div>
-              <ol className="phase-steps">
-                <li>Die KI bringt alle erkannten Referenzen in ein einheitliches Format.</li>
-                <li>Autoren, Titel, Jahr und Quelle werden standardisiert – das verbessert die Trefferquote bei der Suche deutlich.</li>
-                <li>Einen Moment Geduld, das dauert wenige Sekunden …</li>
-              </ol>
-            </div>
-          ) : (
-            <div className="phase-guide">
-              <div className="phase-guide-title">Schritt 1 von 3 – Literaturverzeichnis einfügen</div>
-              <ol className="phase-steps">
-                <li>Lade dein PDF direkt hoch (Button <b>„PDF hochladen"</b>) – oder kopiere das Literaturverzeichnis manuell in das Textfeld.</li>
-                <li>Klicke auf <b>„Referenzen erkennen"</b> – die KI erkennt und normalisiert alle Einträge automatisch.</li>
-              </ol>
-            </div>
-          )}
-
-          <section className="card">
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={
-                "Literaturverzeichnis hier einfügen …\n\nz. B.:\nAutor, A. (2020). Titel der Arbeit. Journal, 12(3), 1-20."
-              }
+          <div className="mode-toggle" role="tablist" aria-label="Eingabe-Modus">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "text"}
+              className={`mode-btn${mode === "text" ? " active" : ""}`}
+              onClick={() => setMode("text")}
               disabled={busy}
-            />
-            <div className="toolbar">
-              <button className="primary" onClick={parse} disabled={busy || !text.trim()}>
-                {phase === "parsing" ? (
-                  <>
-                    <span className="spin" />
-                    Erkenne Referenzen …
-                  </>
-                ) : phase === "normalizing" ? (
-                  <>
-                    <span className="spin" />
-                    Formatiere einheitlich …
-                  </>
-                ) : (
-                  "Referenzen erkennen"
-                )}
-              </button>
-              <label className={`ghost btn-label${busy ? " disabled" : ""}`}>
-                {pdfLoading ? (
-                  <>
-                    <span className="spin" />
-                    PDF wird geladen …
-                  </>
-                ) : (
-                  "PDF hochladen"
-                )}
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  style={{ display: "none" }}
-                  onChange={handlePdfUpload}
+            >
+              Text einfügen
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "pdf-verify"}
+              className={`mode-btn${mode === "pdf-verify" ? " active" : ""}`}
+              onClick={() => setMode("pdf-verify")}
+              disabled={busy || !status?.hallucinator}
+              title={
+                status && !status.hallucinator
+                  ? "Noch nicht konfiguriert (HALLUCINATOR_SERVICE_URL fehlt auf dem Server)"
+                  : undefined
+              }
+            >
+              PDF direkt prüfen
+            </button>
+          </div>
+
+          {mode === "text" ? (
+            <>
+              {phase === "normalizing" ? (
+                <div className="phase-guide normalizing-guide">
+                  <div className="phase-guide-title">Normalisierung läuft …</div>
+                  <ol className="phase-steps">
+                    <li>Die KI bringt alle erkannten Referenzen in ein einheitliches Format.</li>
+                    <li>Autoren, Titel, Jahr und Quelle werden standardisiert – das verbessert die Trefferquote bei der Suche deutlich.</li>
+                    <li>Einen Moment Geduld, das dauert wenige Sekunden …</li>
+                  </ol>
+                </div>
+              ) : (
+                <div className="phase-guide">
+                  <div className="phase-guide-title">Schritt 1 von 3 – Literaturverzeichnis einfügen</div>
+                  <ol className="phase-steps">
+                    <li>Lade dein PDF direkt hoch (Button <b>„PDF hochladen"</b>) – oder kopiere das Literaturverzeichnis manuell in das Textfeld.</li>
+                    <li>Klicke auf <b>„Referenzen erkennen"</b> – die KI erkennt und normalisiert alle Einträge automatisch.</li>
+                  </ol>
+                </div>
+              )}
+
+              <section className="card">
+                <textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder={
+                    "Literaturverzeichnis hier einfügen …\n\nz. B.:\nAutor, A. (2020). Titel der Arbeit. Journal, 12(3), 1-20."
+                  }
                   disabled={busy}
                 />
-              </label>
-              <button className="ghost" onClick={() => setText(EXAMPLE)} disabled={busy}>
-                Beispiel einfügen
-              </button>
-              <button className="ghost" onClick={reset} disabled={busy}>
-                Leeren
-              </button>
-              <span className="spacer" />
-              <span className="hint">
-                {text.trim() ? `${text.length} Zeichen` : "Text einfügen, um zu starten"}
-              </span>
-            </div>
-          </section>
+                <div className="toolbar">
+                  <button className="primary" onClick={parse} disabled={busy || !text.trim()}>
+                    {phase === "parsing" ? (
+                      <>
+                        <span className="spin" />
+                        Erkenne Referenzen …
+                      </>
+                    ) : phase === "normalizing" ? (
+                      <>
+                        <span className="spin" />
+                        Formatiere einheitlich …
+                      </>
+                    ) : (
+                      "Referenzen erkennen"
+                    )}
+                  </button>
+                  <label className={`ghost btn-label${busy ? " disabled" : ""}`}>
+                    {pdfLoading ? (
+                      <>
+                        <span className="spin" />
+                        PDF wird geladen …
+                      </>
+                    ) : (
+                      "PDF hochladen"
+                    )}
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      style={{ display: "none" }}
+                      onChange={handlePdfUpload}
+                      disabled={busy}
+                    />
+                  </label>
+                  <button className="ghost" onClick={() => setText(EXAMPLE)} disabled={busy}>
+                    Beispiel einfügen
+                  </button>
+                  <button className="ghost" onClick={reset} disabled={busy}>
+                    Leeren
+                  </button>
+                  <span className="spacer" />
+                  <span className="hint">
+                    {text.trim() ? `${text.length} Zeichen` : "Text einfügen, um zu starten"}
+                  </span>
+                </div>
+              </section>
 
-          <details className="options-panel">
-            <summary>⚙ Optionen</summary>
-            <div className="or-key-row">
-              <label htmlFor="or-key">OpenRouter-Key</label>
-              <input
-                id="or-key"
-                className="or-key-input"
-                type="password"
-                placeholder="sk-or-…"
-                value={orKey}
-                onChange={(e) => handleOrKeyChange(e.target.value)}
-                autoComplete="off"
-              />
-              <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer noopener">
-                Key erstellen →
-              </a>
-            </div>
-            <p className="hint" style={{ marginTop: 6 }}>
-              Trage hier deinen eigenen OpenRouter-Key ein, damit du nicht den Key des
-              Betreibers verbrauchst. Der Key wird nur in diesem Browser gespeichert und
-              ausschließlich für deine Anfragen verwendet – nie dauerhaft auf dem Server.
-            </p>
-          </details>
+              <details className="options-panel">
+                <summary>⚙ Optionen</summary>
+                <div className="or-key-row">
+                  <label htmlFor="or-key">OpenRouter-Key</label>
+                  <input
+                    id="or-key"
+                    className="or-key-input"
+                    type="password"
+                    placeholder="sk-or-…"
+                    value={orKey}
+                    onChange={(e) => handleOrKeyChange(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer noopener">
+                    Key erstellen →
+                  </a>
+                </div>
+                <p className="hint" style={{ marginTop: 6 }}>
+                  Trage hier deinen eigenen OpenRouter-Key ein, damit du nicht den Key des
+                  Betreibers verbrauchst. Der Key wird nur in diesem Browser gespeichert und
+                  ausschließlich für deine Anfragen verwendet – nie dauerhaft auf dem Server.
+                </p>
+              </details>
+            </>
+          ) : (
+            <>
+              <div className="phase-guide">
+                <div className="phase-guide-title">PDF direkt prüfen (Beta)</div>
+                <ol className="phase-steps">
+                  <li>Lade ein PDF mit Literaturverzeichnis hoch – Extraktion und Prüfung laufen in einem Schritt über die <b>hallucinator</b>-Engine (DBLP, CrossRef, arXiv, Semantic Scholar, inkl. Retraction-Check).</li>
+                  <li>Anders als bei „Text einfügen" gibt es hier keinen Zwischenschritt zum manuellen Korrigieren einzelner Referenzen – die Ergebnisse erscheinen direkt.</li>
+                </ol>
+              </div>
+
+              <section className="card">
+                {!status?.hallucinator && (
+                  <p className="hint" style={{ marginBottom: 12 }}>
+                    PDF-Direktprüfung ist auf diesem Server noch nicht konfiguriert
+                    (<code>HALLUCINATOR_SERVICE_URL</code> fehlt). Siehe{" "}
+                    <code>hallucinator-service/README.md</code> für die Einrichtung.
+                  </p>
+                )}
+                <label
+                  className={`ghost btn-label${busy || !status?.hallucinator ? " disabled" : ""}`}
+                >
+                  {pdfVerifying ? (
+                    <>
+                      <span className="spin" />
+                      PDF wird geprüft …
+                    </>
+                  ) : (
+                    "PDF hochladen & prüfen"
+                  )}
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    style={{ display: "none" }}
+                    onChange={handlePdfVerifyUpload}
+                    disabled={busy || !status?.hallucinator}
+                  />
+                </label>
+              </section>
+            </>
+          )}
         </>
       )}
 
